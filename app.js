@@ -1,0 +1,755 @@
+/**
+ * Звʼязує UI з реєстром декларацій.
+ *
+ * Уся чиста логіка (нормалізація ПІБ, побудова URL, розбір відповідей)
+ * винесена в src/lib.js і покрита тестами; тут — лише DOM, мережа та стан.
+ */
+
+import {
+  API_BASE,
+  applyProxy,
+  buildDocumentUrl,
+  buildGoogleQuery,
+  buildGoogleUrl,
+  buildRegistryLink,
+  buildSearchUrl,
+  countFields,
+  extractList,
+  flattenDocument,
+  normalizePib,
+  REGISTRY_HOST,
+  summarizeDocument,
+  titleCasePib,
+  validatePib,
+} from './src/lib.js';
+
+const APP_VERSION = '1.0.0';
+const REQUEST_TIMEOUT_MS = 20000;
+const RECENT_LIMIT = 8;
+
+const STORAGE = {
+  theme: 'pp.theme',
+  recent: 'pp.recent',
+  settings: 'pp.settings',
+};
+
+const $ = (id) => document.getElementById(id);
+
+const els = {
+  form: $('searchForm'),
+  pib: $('pib'),
+  clearBtn: $('clearBtn'),
+  preview: $('preview'),
+  submitBtn: $('submitBtn'),
+  chips: $('actionChips'),
+  googleChip: $('googleChip'),
+  googleChipLabel: $('googleChipLabel'),
+  registryChip: $('registryChip'),
+  pawBtn: $('pawBtn'),
+  pawBtnTitle: $('pawBtnTitle'),
+  pawBtnSub: $('pawBtnSub'),
+  subtitle: $('subtitle'),
+  recentSection: $('recentSection'),
+  recentList: $('recentList'),
+  clearRecentBtn: $('clearRecentBtn'),
+  status: $('status'),
+  results: $('results'),
+  resultsList: $('resultsList'),
+  resultsCount: $('resultsCount'),
+  moreBtn: $('moreBtn'),
+  docDialog: $('docDialog'),
+  docTitle: $('docTitle'),
+  docSubtitle: $('docSubtitle'),
+  docCloseBtn: $('docCloseBtn'),
+  tabJson: $('tabJson'),
+  tabFields: $('tabFields'),
+  paneJson: $('paneJson'),
+  paneFields: $('paneFields'),
+  jsonView: $('jsonView'),
+  fieldsView: $('fieldsView'),
+  showEmpty: $('showEmpty'),
+  copyBtn: $('copyBtn'),
+  shareBtn: $('shareBtn'),
+  downloadBtn: $('downloadBtn'),
+  openRegistryBtn: $('openRegistryBtn'),
+  settingsBtn: $('settingsBtn'),
+  settingsDialog: $('settingsDialog'),
+  settingsCloseBtn: $('settingsCloseBtn'),
+  apiBase: $('apiBase'),
+  proxyEnabled: $('proxyEnabled'),
+  proxyTemplate: $('proxyTemplate'),
+  settingsSaveBtn: $('settingsSaveBtn'),
+  settingsResetBtn: $('settingsResetBtn'),
+  versionLine: $('versionLine'),
+  toast: $('toast'),
+};
+
+const DEFAULT_SETTINGS = {
+  apiBase: API_BASE,
+  proxyEnabled: false,
+  proxyTemplate: 'https://corsproxy.io/?{url}',
+};
+
+const state = {
+  settings: { ...DEFAULT_SETTINGS },
+  query: '',
+  page: 1,
+  exhausted: false,
+  loading: false,
+  currentDoc: null,
+  currentSummary: null,
+};
+
+// ─────────────────────────── Сховище ────────────────────────────
+
+function readStore(key, fallback) {
+  try {
+    const raw = localStorage.getItem(key);
+    return raw === null ? fallback : JSON.parse(raw);
+  } catch {
+    return fallback;
+  }
+}
+
+function writeStore(key, value) {
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+  } catch {
+    /* приватний режим або переповнене сховище — не критично */
+  }
+}
+
+// ──────────────────────────── Тема ──────────────────────────────
+
+/** Перемикає оформлення: 'plain' — звичайне, 'paw' — щенячий патруль. */
+function applyTheme(theme, { animate = false } = {}) {
+  const paw = theme === 'paw';
+  document.documentElement.dataset.theme = paw ? 'paw' : 'plain';
+  els.pawBtn.setAttribute('aria-pressed', String(paw));
+  els.pawBtnTitle.textContent = paw ? 'Щенячий патруль увімкнено' : 'Щенячий патруль';
+  els.pawBtnSub.textContent = paw ? 'Натисніть, щоб повернути звичайний вигляд' : 'Увімкнути грайливий вигляд';
+  els.subtitle.textContent = paw ? 'Патруль на чолі! Шукаємо декларації' : 'Єдиний державний реєстр декларацій';
+  els.submitBtn.querySelector('.primary-btn__label').textContent = paw ? 'Гав! Шукати' : 'Знайти декларації';
+  document.querySelector('meta[name="theme-color"]')?.setAttribute('content', paw ? '#eaf4ff' : '#0b1220');
+
+  if (animate) {
+    els.pawBtn.classList.add('is-switching');
+    setTimeout(() => els.pawBtn.classList.remove('is-switching'), 520);
+  }
+  writeStore(STORAGE.theme, theme);
+}
+
+// ─────────────────────────── Історія ────────────────────────────
+
+function getRecent() {
+  const list = readStore(STORAGE.recent, []);
+  return Array.isArray(list) ? list.filter((s) => typeof s === 'string') : [];
+}
+
+function pushRecent(pib) {
+  const list = getRecent().filter((item) => item.toLowerCase() !== pib.toLowerCase());
+  list.unshift(pib);
+  writeStore(STORAGE.recent, list.slice(0, RECENT_LIMIT));
+  renderRecent();
+}
+
+function renderRecent() {
+  const list = getRecent();
+  els.recentSection.hidden = list.length === 0;
+  els.recentList.replaceChildren(
+    ...list.map((pib) => {
+      const chip = document.createElement('button');
+      chip.type = 'button';
+      chip.className = 'chip';
+      chip.textContent = pib;
+      chip.addEventListener('click', () => {
+        els.pib.value = pib;
+        onInput();
+        startSearch();
+      });
+      return chip;
+    })
+  );
+}
+
+// ──────────────────────── Введення ПІБ ──────────────────────────
+
+function onInput() {
+  const raw = els.pib.value;
+  const normalized = normalizePib(raw);
+  els.clearBtn.hidden = raw.length === 0;
+
+  // Показуємо, як багаторядкове введення склеїлось в один рядок.
+  const multiline = /\n/.test(raw.trim());
+  if (normalized && multiline) {
+    els.preview.hidden = false;
+    els.preview.replaceChildren(document.createTextNode('Запит: '), boldNode(normalized));
+  } else {
+    els.preview.hidden = true;
+  }
+
+  if (normalized) {
+    els.chips.hidden = false;
+    els.googleChip.href = buildGoogleUrl(normalized);
+    els.googleChipLabel.textContent = `Загуглити «${buildGoogleQuery(normalized)}»`;
+    els.registryChip.href = buildGoogleUrl(normalized, { site: REGISTRY_HOST });
+  } else {
+    els.chips.hidden = true;
+  }
+}
+
+function boldNode(text) {
+  const strong = document.createElement('strong');
+  strong.textContent = text;
+  return strong;
+}
+
+// ──────────────────────────── Мережа ────────────────────────────
+
+class ApiError extends Error {
+  constructor(message, { kind, url, status, body } = {}) {
+    super(message);
+    this.kind = kind;
+    this.url = url;
+    this.status = status;
+    this.body = body;
+  }
+}
+
+async function fetchJson(url) {
+  const finalUrl = state.settings.proxyEnabled ? applyProxy(url, state.settings.proxyTemplate) : url;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+
+  let response;
+  try {
+    response = await fetch(finalUrl, {
+      method: 'GET',
+      headers: { Accept: 'application/json' },
+      signal: controller.signal,
+    });
+  } catch (error) {
+    clearTimeout(timer);
+    if (error.name === 'AbortError') {
+      throw new ApiError('Реєстр не відповів за 20 секунд.', { kind: 'timeout', url: finalUrl });
+    }
+    // fetch кидає TypeError і на CORS, і на відсутність мережі —
+    // розрізнити їх зі сторінки неможливо, тому пояснюємо обидва випадки.
+    throw new ApiError('Не вдалося зʼєднатися з реєстром.', { kind: 'network', url: finalUrl });
+  }
+  clearTimeout(timer);
+
+  const text = await response.text();
+  if (!response.ok) {
+    throw new ApiError(`Реєстр відповів помилкою ${response.status}.`, {
+      kind: 'http',
+      url: finalUrl,
+      status: response.status,
+      body: text.slice(0, 400),
+    });
+  }
+
+  try {
+    return JSON.parse(text);
+  } catch {
+    throw new ApiError('Відповідь реєстру не є коректним JSON.', {
+      kind: 'parse',
+      url: finalUrl,
+      body: text.slice(0, 400),
+    });
+  }
+}
+
+// ──────────────────────────── Пошук ─────────────────────────────
+
+function startSearch() {
+  const check = validatePib(els.pib.value);
+  if (!check.ok) {
+    showStatus('error', [check.error]);
+    els.results.hidden = true;
+    return;
+  }
+  state.query = check.value;
+  state.page = 1;
+  state.exhausted = false;
+  els.resultsList.replaceChildren();
+  els.results.hidden = true;
+  pushRecent(titleCasePib(check.value));
+  loadPage();
+}
+
+async function loadPage() {
+  if (state.loading) return;
+  setLoading(true);
+  const append = state.page > 1;
+  if (!append) showStatus('info', ['Шукаю в реєстрі…']);
+
+  try {
+    const url = buildSearchUrl(state.query, { page: state.page, base: state.settings.apiBase });
+    const payload = await fetchJson(url);
+    const { items, total } = extractList(payload);
+    const summaries = items.map(summarizeDocument);
+
+    if (!append && summaries.length === 0) {
+      showEmptyResult(payload);
+      return;
+    }
+
+    hideStatus();
+    els.results.hidden = false;
+    els.resultsList.append(...summaries.map(renderCard));
+    els.resultsCount.textContent = total !== null ? `${total} всього` : `${els.resultsList.childElementCount} показано`;
+
+    // Ховаємо «Показати ще», коли сторінка порожня або всі документи вже на екрані.
+    const shown = els.resultsList.childElementCount;
+    state.exhausted = summaries.length === 0 || (total !== null && shown >= total);
+    els.moreBtn.hidden = state.exhausted;
+  } catch (error) {
+    showError(error);
+  } finally {
+    setLoading(false);
+  }
+}
+
+function setLoading(value) {
+  state.loading = value;
+  els.submitBtn.disabled = value;
+  els.submitBtn.classList.toggle('is-busy', value);
+  els.moreBtn.disabled = value;
+}
+
+function renderCard(summary) {
+  const card = document.createElement('button');
+  card.type = 'button';
+  card.className = 'doc-card';
+
+  const name = document.createElement('div');
+  name.className = 'doc-card__name';
+  name.textContent = summary.pib;
+  card.append(name);
+
+  for (const value of [summary.position, summary.agency]) {
+    if (!value) continue;
+    const p = document.createElement('p');
+    p.className = 'doc-card__meta';
+    p.textContent = value;
+    card.append(p);
+  }
+
+  const tags = document.createElement('div');
+  tags.className = 'doc-card__tags';
+  if (summary.year) tags.append(tagNode(`за ${summary.year} рік`, 'tag--year'));
+  if (summary.type) tags.append(tagNode(summary.type));
+  if (summary.date) tags.append(tagNode(summary.date));
+  if (summary.corrected) tags.append(tagNode('виправлена'));
+  if (tags.childElementCount) card.append(tags);
+
+  card.addEventListener('click', () => openDocument(summary));
+  return card;
+}
+
+function tagNode(text, extra) {
+  const span = document.createElement('span');
+  span.className = extra ? `tag ${extra}` : 'tag';
+  span.textContent = text;
+  return span;
+}
+
+// ─────────────────────── Стани та повідомлення ──────────────────
+
+function showStatus(kind, lines) {
+  els.status.hidden = false;
+  els.status.className = `status status--${kind}`;
+  els.status.replaceChildren(
+    ...lines.map((line) => {
+      if (line instanceof Node) return line;
+      const p = document.createElement('p');
+      p.textContent = line;
+      return p;
+    })
+  );
+}
+
+function hideStatus() {
+  els.status.hidden = true;
+}
+
+function showEmptyResult(payload) {
+  const googleLink = document.createElement('a');
+  googleLink.className = 'chip';
+  googleLink.target = '_blank';
+  googleLink.rel = 'noopener noreferrer';
+  googleLink.href = buildGoogleUrl(state.query);
+  googleLink.textContent = `Загуглити «${buildGoogleQuery(state.query)}»`;
+
+  const lines = [
+    `У реєстрі нічого не знайдено за запитом «${state.query}».`,
+    'Перевірте написання або спробуйте лише прізвище та імʼя.',
+    googleLink,
+  ];
+
+  // Якщо відповідь непорожня, але розпізнати список не вдалося — покажемо сире тіло.
+  if (payload && typeof payload === 'object' && Object.keys(payload).length) {
+    const details = document.createElement('details');
+    const summary = document.createElement('summary');
+    summary.textContent = 'Показати відповідь реєстру';
+    const pre = document.createElement('pre');
+    pre.className = 'json';
+    pre.textContent = JSON.stringify(payload, null, 2).slice(0, 4000);
+    details.append(summary, pre);
+    lines.push(details);
+  }
+
+  showStatus('empty', lines);
+  els.results.hidden = true;
+}
+
+function showError(error) {
+  const lines = [error.message];
+
+  if (error.kind === 'network') {
+    lines.push(
+      'Причина зазвичай одна з двох: немає інтернету або реєстр не дозволяє запити з браузера (CORS).',
+      'Якщо інтернет є — увімкніть проксі в налаштуваннях або скористайтесь пошуком Google нижче.'
+    );
+    const enable = document.createElement('button');
+    enable.type = 'button';
+    enable.className = 'chip';
+    enable.textContent = state.settings.proxyEnabled ? 'Змінити проксі' : 'Увімкнути проксі й повторити';
+    enable.addEventListener('click', () => {
+      if (state.settings.proxyEnabled) {
+        openSettings();
+      } else {
+        state.settings.proxyEnabled = true;
+        writeStore(STORAGE.settings, state.settings);
+        syncSettingsForm();
+        loadPage();
+      }
+    });
+    lines.push(enable);
+  }
+
+  if (error.kind === 'http' && error.status === 429) {
+    lines.push('Реєстр обмежив частоту запитів — зачекайте хвилину й спробуйте ще раз.');
+  }
+
+  if (error.body) {
+    const code = document.createElement('code');
+    code.textContent = error.body;
+    const wrap = document.createElement('p');
+    wrap.append(code);
+    lines.push(wrap);
+  }
+
+  if (state.query) {
+    const googleLink = document.createElement('a');
+    googleLink.className = 'chip';
+    googleLink.target = '_blank';
+    googleLink.rel = 'noopener noreferrer';
+    googleLink.href = buildGoogleUrl(state.query);
+    googleLink.textContent = `Загуглити «${buildGoogleQuery(state.query)}»`;
+    lines.push(googleLink);
+  }
+
+  showStatus('error', lines);
+}
+
+function toast(message) {
+  els.toast.textContent = message;
+  els.toast.hidden = false;
+  clearTimeout(toast._timer);
+  toast._timer = setTimeout(() => {
+    els.toast.hidden = true;
+  }, 2600);
+}
+
+// ───────────────────────── Документ ─────────────────────────────
+
+async function openDocument(summary) {
+  state.currentSummary = summary;
+  state.currentDoc = null;
+  els.docTitle.textContent = summary.pib;
+  els.docSubtitle.textContent = 'Завантажую повний документ…';
+  els.jsonView.textContent = '';
+  els.fieldsView.replaceChildren();
+  els.openRegistryBtn.href = summary.id ? buildRegistryLink(summary.id) : buildGoogleUrl(summary.pib);
+  showTab('json');
+  if (!els.docDialog.open) els.docDialog.showModal();
+
+  // Якщо ідентифікатора немає — показуємо те, що прийшло у списку.
+  if (!summary.id) {
+    state.currentDoc = summary.raw;
+    renderDocument(summary.raw);
+    els.docSubtitle.textContent = 'Дані зі списку (ідентифікатор документа відсутній)';
+    return;
+  }
+
+  try {
+    const doc = await fetchJson(buildDocumentUrl(summary.id, { base: state.settings.apiBase }));
+    state.currentDoc = doc;
+    renderDocument(doc);
+  } catch (error) {
+    // Повний документ не дістали — не лишаємо панель порожньою.
+    state.currentDoc = summary.raw;
+    renderDocument(summary.raw);
+    els.docSubtitle.textContent = `${error.message} Показано дані зі списку.`;
+  }
+}
+
+function renderDocument(doc) {
+  const json = JSON.stringify(doc, null, 2);
+  els.jsonView.innerHTML = highlightJson(json);
+
+  const sections = flattenDocument(doc);
+  renderFields(sections);
+
+  const parts = [];
+  if (state.currentSummary?.year) parts.push(`за ${state.currentSummary.year} рік`);
+  const fields = countFields(sections);
+  if (fields) parts.push(`${fields} заповнених полів`);
+  els.docSubtitle.textContent = parts.join(' · ') || 'Повний документ';
+}
+
+function renderFields(sections) {
+  const showEmpty = els.showEmpty.checked;
+  if (!sections.length) {
+    const p = document.createElement('p');
+    p.className = 'hint';
+    p.textContent = 'Структуровані розділи не розпізнані — дивіться вкладку JSON.';
+    els.fieldsView.replaceChildren(p);
+    return;
+  }
+
+  const nodes = [];
+  for (const section of sections) {
+    const visibleEntries = section.entries
+      .map((entry) => ({ ...entry, rows: entry.rows.filter((row) => showEmpty || !row.empty) }))
+      .filter((entry) => entry.rows.length);
+    if (!visibleEntries.length) continue;
+
+    const details = document.createElement('details');
+    details.className = 'section';
+    details.open = nodes.length === 0; // перший розділ одразу розгорнутий
+    const summary = document.createElement('summary');
+    const title = document.createElement('span');
+    title.textContent = section.title;
+    const count = document.createElement('span');
+    count.className = 'section__count';
+    count.textContent = String(visibleEntries.reduce((n, e) => n + e.rows.length, 0));
+    summary.append(title, count);
+    details.append(summary);
+
+    for (const entry of visibleEntries) {
+      const block = document.createElement('div');
+      block.className = 'entry';
+      if (visibleEntries.length > 1 || entry.title) {
+        const h = document.createElement('p');
+        h.className = 'entry__title';
+        h.textContent = entry.title;
+        block.append(h);
+      }
+      for (const row of entry.rows) {
+        const line = document.createElement('div');
+        line.className = row.empty ? 'row row--empty' : 'row';
+
+        const label = document.createElement('div');
+        label.className = 'row__label';
+        label.textContent = row.label;
+        if (row.label !== row.key) {
+          const key = document.createElement('span');
+          key.className = 'row__key';
+          key.textContent = ` ${row.key}`;
+          label.append(key);
+        }
+
+        const value = document.createElement('div');
+        value.className = 'row__value';
+        value.textContent = row.empty ? '—' : row.text;
+
+        line.append(label, value);
+        block.append(line);
+      }
+      details.append(block);
+    }
+    nodes.push(details);
+  }
+
+  els.fieldsView.replaceChildren(...nodes);
+}
+
+/** Розфарбовує JSON. Спершу екрануємо HTML, потім загортаємо токени. */
+function highlightJson(json) {
+  const escaped = json
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+  return escaped.replace(
+    /("(\\u[a-fA-F0-9]{4}|\\[^u]|[^\\"])*"(\s*:)?|\b(true|false|null)\b|-?\d+(\.\d+)?([eE][+-]?\d+)?)/g,
+    (match) => {
+      let cls = 'n';
+      if (match.startsWith('"')) cls = match.endsWith(':') ? 'k' : 's';
+      else if (/true|false|null/.test(match)) cls = 'b';
+      return `<span class="${cls}">${match}</span>`;
+    }
+  );
+}
+
+function showTab(which) {
+  const json = which === 'json';
+  els.tabJson.setAttribute('aria-selected', String(json));
+  els.tabFields.setAttribute('aria-selected', String(!json));
+  els.paneJson.hidden = !json;
+  els.paneFields.hidden = json;
+}
+
+function currentJsonText() {
+  return JSON.stringify(state.currentDoc ?? {}, null, 2);
+}
+
+function suggestedFileName() {
+  const base = (state.currentSummary?.pib || 'declaration').replace(/[^\p{L}\d]+/gu, '-').toLowerCase();
+  const year = state.currentSummary?.year ? `-${state.currentSummary.year}` : '';
+  return `${base}${year}.json`;
+}
+
+// ─────────────────────── Налаштування ───────────────────────────
+
+function syncSettingsForm() {
+  els.apiBase.value = state.settings.apiBase;
+  els.proxyEnabled.checked = state.settings.proxyEnabled;
+  els.proxyTemplate.value = state.settings.proxyTemplate;
+}
+
+function openSettings() {
+  syncSettingsForm();
+  els.versionLine.textContent = `Версія ${APP_VERSION}`;
+  if (!els.settingsDialog.open) els.settingsDialog.showModal();
+}
+
+function saveSettings() {
+  state.settings = {
+    apiBase: els.apiBase.value.trim().replace(/\/+$/, '') || DEFAULT_SETTINGS.apiBase,
+    proxyEnabled: els.proxyEnabled.checked,
+    proxyTemplate: els.proxyTemplate.value.trim() || DEFAULT_SETTINGS.proxyTemplate,
+  };
+  writeStore(STORAGE.settings, state.settings);
+  els.settingsDialog.close();
+  toast('Збережено');
+}
+
+// ──────────────────────────── Події ─────────────────────────────
+
+els.form.addEventListener('submit', (event) => {
+  event.preventDefault();
+  els.pib.blur();
+  startSearch();
+});
+
+els.pib.addEventListener('input', onInput);
+
+els.clearBtn.addEventListener('click', () => {
+  els.pib.value = '';
+  onInput();
+  els.pib.focus();
+});
+
+els.moreBtn.addEventListener('click', () => {
+  state.page += 1;
+  loadPage();
+});
+
+els.pawBtn.addEventListener('click', () => {
+  const next = document.documentElement.dataset.theme === 'paw' ? 'plain' : 'paw';
+  applyTheme(next, { animate: true });
+});
+
+els.clearRecentBtn.addEventListener('click', () => {
+  writeStore(STORAGE.recent, []);
+  renderRecent();
+});
+
+els.tabJson.addEventListener('click', () => showTab('json'));
+els.tabFields.addEventListener('click', () => showTab('fields'));
+els.showEmpty.addEventListener('change', () => renderFields(flattenDocument(state.currentDoc)));
+els.docCloseBtn.addEventListener('click', () => els.docDialog.close());
+els.settingsCloseBtn.addEventListener('click', () => els.settingsDialog.close());
+els.settingsBtn.addEventListener('click', openSettings);
+els.settingsSaveBtn.addEventListener('click', saveSettings);
+els.settingsResetBtn.addEventListener('click', () => {
+  state.settings = { ...DEFAULT_SETTINGS };
+  writeStore(STORAGE.settings, state.settings);
+  syncSettingsForm();
+  toast('Скинуто до типових значень');
+});
+
+els.copyBtn.addEventListener('click', async () => {
+  try {
+    await navigator.clipboard.writeText(currentJsonText());
+    toast('JSON скопійовано');
+  } catch {
+    toast('Браузер не дозволив копіювання');
+  }
+});
+
+els.shareBtn.addEventListener('click', async () => {
+  const link = state.currentSummary?.id ? buildRegistryLink(state.currentSummary.id) : els.openRegistryBtn.href;
+  const payload = { title: state.currentSummary?.pib || 'Декларація', text: state.currentSummary?.pib, url: link };
+  if (navigator.share) {
+    try {
+      await navigator.share(payload);
+    } catch {
+      /* користувач скасував — мовчимо */
+    }
+    return;
+  }
+  try {
+    await navigator.clipboard.writeText(link);
+    toast('Посилання скопійовано');
+  } catch {
+    toast('Поділитися не вдалося');
+  }
+});
+
+els.downloadBtn.addEventListener('click', () => {
+  const blob = new Blob([currentJsonText()], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = suggestedFileName();
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+});
+
+// Клік по підкладці закриває панель.
+for (const dialog of [els.docDialog, els.settingsDialog]) {
+  dialog.addEventListener('click', (event) => {
+    if (event.target === dialog) dialog.close();
+  });
+}
+
+// ─────────────────────────── Старт ──────────────────────────────
+
+function init() {
+  state.settings = { ...DEFAULT_SETTINGS, ...readStore(STORAGE.settings, {}) };
+  applyTheme(readStore(STORAGE.theme, 'plain'));
+  renderRecent();
+  onInput();
+
+  // Дозволяє відкрити застосунок одразу з ПІБ: ?pib=Іваненко Іван
+  const fromUrl = new URLSearchParams(location.search).get('pib');
+  if (fromUrl) {
+    els.pib.value = fromUrl;
+    onInput();
+    startSearch();
+  }
+
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('./sw.js').catch(() => {
+        /* офлайн-кеш необовʼязковий */
+      });
+    });
+  }
+}
+
+init();

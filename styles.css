@@ -1,0 +1,949 @@
+/* Мобільний застосунок: верстка розрахована на екран Pixel 9 Pro (≈412 dp),
+   але тягнеться до планшета. Темна тема — типова, світла — за системною. */
+
+:root {
+  --bg: #0b1220;
+  --bg-elevated: #121b2d;
+  --bg-input: #0e1728;
+  --line: #223049;
+  --text: #eef3fb;
+  --text-muted: #9aa8c2;
+  --accent: #3884ff;
+  --accent-ink: #ffffff;
+  --warn: #ffd13d;
+  --danger: #ff6b6b;
+  --radius: 16px;
+  --radius-sm: 12px;
+  --tap: 48px;
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+@media (prefers-color-scheme: light) {
+  :root {
+    --bg: #f4f7fc;
+    --bg-elevated: #ffffff;
+    --bg-input: #ffffff;
+    --line: #dbe3ef;
+    --text: #131b2b;
+    --text-muted: #5d6b85;
+    --accent: #1b62e0;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  font-size: 16px;
+  line-height: 1.45;
+  -webkit-font-smoothing: antialiased;
+  overscroll-behavior-y: none;
+}
+
+h1,
+h2 {
+  margin: 0;
+  font-weight: 650;
+}
+
+/* ─────────────────────────── Каркас ─────────────────────────── */
+
+.app {
+  min-height: 100dvh;
+  max-width: 640px;
+  margin: 0 auto;
+  padding: calc(var(--safe-top) + 12px) 16px calc(var(--safe-bottom) + 32px);
+}
+
+.topbar {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 18px;
+}
+
+.topbar h1 {
+  font-size: 22px;
+  letter-spacing: -0.01em;
+}
+
+.topbar__title p {
+  margin: 2px 0 0;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.icon-btn {
+  flex: none;
+  width: var(--tap);
+  height: var(--tap);
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  background: var(--bg-elevated);
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.icon-btn svg {
+  width: 22px;
+  height: 22px;
+  fill: currentColor;
+}
+
+.icon-btn:active {
+  transform: scale(0.94);
+}
+
+/* ────────────────────────── Пошук ───────────────────────────── */
+
+.search-card {
+  background: var(--bg-elevated);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 16px;
+}
+
+.field-label {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-muted);
+  margin-bottom: 8px;
+}
+
+.field {
+  position: relative;
+}
+
+#pib,
+.text-input {
+  width: 100%;
+  padding: 14px 46px 14px 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--bg-input);
+  color: var(--text);
+  font-size: 17px;
+  line-height: 1.4;
+  font-family: inherit;
+  appearance: none;
+}
+
+/* Багаторядкове поле: ПІБ можна вводити і в один рядок, і з переносами. */
+#pib {
+  display: block;
+  min-height: 108px;
+  resize: vertical;
+}
+
+.text-input {
+  height: 48px;
+  padding: 0 14px;
+  font-size: 15px;
+}
+
+.preview {
+  margin: 10px 0 0;
+  padding: 9px 12px;
+  border: 1px dashed var(--line);
+  border-radius: var(--radius-sm);
+  font-size: 14px;
+  color: var(--text-muted);
+}
+
+.preview strong {
+  color: var(--text);
+  font-weight: 600;
+}
+
+#pib:focus,
+.text-input:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+#pib::-webkit-search-cancel-button {
+  display: none;
+}
+
+.clear-btn {
+  position: absolute;
+  right: 6px;
+  top: 8px;
+  width: 40px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.clear-btn svg {
+  width: 18px;
+  height: 18px;
+  fill: currentColor;
+}
+
+.hint {
+  margin: 8px 0 0;
+  font-size: 12.5px;
+  color: var(--text-muted);
+}
+
+.hint--muted {
+  opacity: 0.7;
+}
+
+.hint code {
+  font-size: 12px;
+  background: var(--bg-input);
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  padding: 1px 4px;
+}
+
+.primary-btn {
+  position: relative;
+  width: 100%;
+  min-height: 52px;
+  margin-top: 14px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: var(--accent);
+  color: var(--accent-ink);
+  font-size: 16px;
+  font-weight: 650;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.primary-btn--sm {
+  width: auto;
+  min-height: 44px;
+  padding: 0 18px;
+  margin-top: 0;
+}
+
+.primary-btn:active {
+  transform: scale(0.99);
+}
+
+.primary-btn[disabled] {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.primary-btn.is-busy .primary-btn__label {
+  visibility: hidden;
+}
+
+.spinner {
+  display: none;
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  width: 20px;
+  height: 20px;
+  border: 2px solid rgba(255, 255, 255, 0.35);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+.primary-btn.is-busy .spinner {
+  display: block;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .spinner {
+    animation-duration: 2s;
+  }
+}
+
+/* ───────────────────────── Чіпи / історія ───────────────────── */
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 40px;
+  padding: 0 14px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--bg-input);
+  color: var(--text);
+  font-size: 14px;
+  text-decoration: none;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.chip__icon {
+  width: 16px;
+  height: 16px;
+  fill: currentColor;
+  opacity: 0.75;
+}
+
+.chip:active {
+  transform: scale(0.97);
+}
+
+.recent {
+  margin-top: 20px;
+}
+
+.recent__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.recent h2 {
+  font-size: 14px;
+  color: var(--text-muted);
+}
+
+.link-btn {
+  border: 0;
+  background: none;
+  color: var(--accent);
+  font-size: 13px;
+  font-family: inherit;
+  cursor: pointer;
+  padding: 8px 0;
+}
+
+/* ───────────────────────── Стани та видача ──────────────────── */
+
+.status {
+  margin-top: 20px;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--accent);
+  border-radius: var(--radius-sm);
+  background: var(--bg-elevated);
+  font-size: 14.5px;
+}
+
+.status--error {
+  border-left-color: var(--danger);
+}
+
+.status--empty {
+  border-left-color: var(--warn);
+}
+
+.status p {
+  margin: 0 0 8px;
+}
+
+.status p:last-child {
+  margin-bottom: 0;
+}
+
+.status code {
+  font-size: 12.5px;
+  word-break: break-all;
+  color: var(--text-muted);
+}
+
+.results {
+  margin-top: 22px;
+}
+
+.results__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.results h2 {
+  font-size: 15px;
+}
+
+.badge {
+  font-size: 12px;
+  color: var(--text-muted);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 2px 9px;
+}
+
+.results__list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.doc-card {
+  width: 100%;
+  text-align: left;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--bg-elevated);
+  color: var(--text);
+  padding: 14px;
+  font-family: inherit;
+  font-size: 15px;
+  cursor: pointer;
+}
+
+.doc-card:active {
+  transform: scale(0.995);
+}
+
+.doc-card__name {
+  font-weight: 650;
+  margin-bottom: 4px;
+}
+
+.doc-card__meta {
+  font-size: 13.5px;
+  color: var(--text-muted);
+  margin: 2px 0 0;
+}
+
+.doc-card__tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.tag {
+  font-size: 12px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 2px 9px;
+  color: var(--text-muted);
+}
+
+.tag--year {
+  color: var(--text);
+  border-color: var(--accent);
+}
+
+.secondary-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 48px;
+  width: 100%;
+  margin-top: 12px;
+  padding: 0 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--bg-elevated);
+  color: var(--text);
+  font-size: 15px;
+  font-family: inherit;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.secondary-btn--sm {
+  width: auto;
+  min-height: 40px;
+  margin-top: 0;
+  font-size: 13.5px;
+  border-radius: 999px;
+}
+
+.disclaimer {
+  margin-top: 28px;
+  font-size: 12px;
+  color: var(--text-muted);
+  line-height: 1.5;
+}
+
+/* ─────────────────────── Нижні панелі (sheet) ───────────────── */
+
+.sheet {
+  width: 100%;
+  max-width: 640px;
+  max-height: 92dvh;
+  margin: auto auto 0;
+  padding: 0;
+  border: 0;
+  border-radius: 20px 20px 0 0;
+  background: var(--bg);
+  color: var(--text);
+  overflow: hidden;
+}
+
+.sheet::backdrop {
+  background: rgba(4, 8, 16, 0.66);
+}
+
+.sheet[open] {
+  display: flex;
+  flex-direction: column;
+}
+
+.sheet__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px 16px 10px;
+  border-bottom: 1px solid var(--line);
+}
+
+.sheet__head h2 {
+  font-size: 17px;
+}
+
+.sheet__subtitle {
+  margin: 3px 0 0;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.sheet__toolbar {
+  display: flex;
+  gap: 8px;
+  padding: 10px 16px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  border-bottom: 1px solid var(--line);
+}
+
+.sheet__toolbar::-webkit-scrollbar {
+  display: none;
+}
+
+.sheet__toolbar .secondary-btn {
+  flex: none;
+}
+
+.sheet__body {
+  flex: 1;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: 14px 16px calc(var(--safe-bottom) + 24px);
+}
+
+.tabs {
+  display: flex;
+  gap: 8px;
+  padding: 10px 16px 0;
+}
+
+.tab {
+  flex: 1;
+  min-height: 40px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 14px;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.tab[aria-selected='true'] {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-ink);
+  font-weight: 600;
+}
+
+.json {
+  margin: 0;
+  font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  font-size: 12.5px;
+  line-height: 1.55;
+  white-space: pre;
+  overflow-x: auto;
+  tab-size: 2;
+}
+
+.json .k {
+  color: #7fb2ff;
+}
+
+.json .s {
+  color: #8fe0a5;
+}
+
+.json .n {
+  color: #ffd13d;
+}
+
+.json .b {
+  color: #ff9f6b;
+}
+
+@media (prefers-color-scheme: light) {
+  .json .k {
+    color: #1b62e0;
+  }
+  .json .s {
+    color: #157a3c;
+  }
+  .json .n {
+    color: #9a6b00;
+  }
+  .json .b {
+    color: #b4501a;
+  }
+}
+
+/* ────────────────────────── Поля документа ──────────────────── */
+
+.switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  color: var(--text-muted);
+  margin-bottom: 12px;
+  cursor: pointer;
+}
+
+.switch--block {
+  display: flex;
+  margin: 18px 0 6px;
+  color: var(--text);
+}
+
+.switch input {
+  width: 20px;
+  height: 20px;
+  accent-color: var(--accent);
+}
+
+.section {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--bg-elevated);
+  margin-bottom: 10px;
+  overflow: hidden;
+}
+
+.section > summary {
+  list-style: none;
+  padding: 13px 14px;
+  font-weight: 600;
+  font-size: 14.5px;
+  cursor: pointer;
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  align-items: center;
+}
+
+.section > summary::-webkit-details-marker {
+  display: none;
+}
+
+.section__count {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-muted);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 1px 8px;
+  flex: none;
+}
+
+.entry {
+  border-top: 1px solid var(--line);
+  padding: 10px 14px 4px;
+}
+
+.entry__title {
+  font-size: 12.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+  margin: 0 0 8px;
+}
+
+.row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 2px;
+  padding: 7px 0;
+  border-bottom: 1px dashed var(--line);
+}
+
+.row:last-child {
+  border-bottom: 0;
+}
+
+.row__label {
+  font-size: 12.5px;
+  color: var(--text-muted);
+}
+
+.row__value {
+  font-size: 14.5px;
+  word-break: break-word;
+}
+
+.row--empty .row__value {
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.row__key {
+  font-size: 11px;
+  color: var(--text-muted);
+  opacity: 0.65;
+  font-family: ui-monospace, Menlo, Consolas, monospace;
+}
+
+@media (min-width: 480px) {
+  .row {
+    grid-template-columns: 42% minmax(0, 1fr);
+    gap: 10px;
+    align-items: baseline;
+  }
+}
+
+/* ───────────────── Кнопка перемикання режиму ────────────────── */
+
+.paw-btn {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  margin-top: 14px;
+  padding: 12px 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--bg-elevated);
+  color: var(--text);
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.paw-btn:active {
+  transform: scale(0.99);
+}
+
+.paw-btn__paw {
+  flex: none;
+  width: 42px;
+  height: 42px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--bg-input);
+  border: 1px solid var(--line);
+}
+
+.paw-btn__paw svg {
+  width: 24px;
+  height: 24px;
+  fill: var(--text-muted);
+}
+
+.paw-btn__text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.paw-btn__title {
+  font-size: 15px;
+  font-weight: 650;
+}
+
+.paw-btn__sub {
+  font-size: 12.5px;
+  color: var(--text-muted);
+}
+
+/* ═════════════════════ Режим «Щенячий патруль» ═══════════════════
+   Оригінальне оформлення: яскрава палітра, круглі форми, відбитки
+   лап. Персонажі, логотипи чи інші захищені елементи не використані. */
+
+[data-theme='paw'] {
+  --bg: #eaf4ff;
+  --bg-elevated: #ffffff;
+  --bg-input: #f6fbff;
+  --line: #b8dcff;
+  --text: #10305c;
+  --text-muted: #5c7ea8;
+  --accent: #0f76d6;
+  --accent-ink: #ffffff;
+  --warn: #ffb703;
+  --danger: #e5383b;
+  --radius: 26px;
+  --radius-sm: 18px;
+  color-scheme: light;
+}
+
+/* Тло з відбитками лап — намальовано вручну, вбудовано як data-URI. */
+[data-theme='paw'] body,
+body[data-theme='paw'] {
+  background-color: var(--bg);
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='120' height='120' viewBox='0 0 120 120'><g fill='%230f76d6' fill-opacity='0.07'><ellipse cx='22' cy='30' rx='5' ry='6.5'/><ellipse cx='34' cy='24' rx='5.2' ry='6.8'/><ellipse cx='46' cy='30' rx='5' ry='6.5'/><path d='M34 36c6.6 0 12 5.1 12 10.7 0 4-3.4 6.4-7.7 5.7-1.5-.2-2.9-.6-4.3-.6s-2.8.4-4.3.6c-4.3.7-7.7-1.7-7.7-5.7C22 41.1 27.4 36 34 36z'/><ellipse cx='78' cy='86' rx='4' ry='5.2' transform='rotate(20 78 86)'/><ellipse cx='88' cy='81' rx='4.2' ry='5.4' transform='rotate(20 88 81)'/><ellipse cx='98' cy='85' rx='4' ry='5.2' transform='rotate(20 98 85)'/><path d='M88 91c5.3 0 9.6 4.1 9.6 8.6 0 3.2-2.7 5.1-6.2 4.6-1.2-.2-2.3-.5-3.4-.5s-2.2.3-3.4.5c-3.5.5-6.2-1.4-6.2-4.6 0-4.5 4.3-8.6 9.6-8.6z'/></g></svg>");
+  background-attachment: fixed;
+}
+
+[data-theme='paw'] .topbar h1 {
+  font-size: 24px;
+  letter-spacing: 0.01em;
+  text-transform: uppercase;
+  color: #0f76d6;
+  text-shadow: 0 2px 0 #ffd23f;
+}
+
+[data-theme='paw'] .search-card,
+[data-theme='paw'] .doc-card,
+[data-theme='paw'] .status,
+[data-theme='paw'] .section,
+[data-theme='paw'] .paw-btn {
+  border-width: 3px;
+  box-shadow: 0 6px 0 rgba(15, 118, 214, 0.13);
+}
+
+[data-theme='paw'] .search-card {
+  border-color: #ffd23f;
+}
+
+[data-theme='paw'] #pib,
+[data-theme='paw'] .text-input {
+  border-width: 3px;
+  font-weight: 600;
+}
+
+[data-theme='paw'] .primary-btn {
+  background: linear-gradient(180deg, #e5383b 0%, #c81f2a 100%);
+  border: 3px solid #ffd23f;
+  border-radius: 999px;
+  min-height: 58px;
+  font-size: 17px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  box-shadow: 0 5px 0 rgba(160, 20, 30, 0.4);
+}
+
+[data-theme='paw'] .primary-btn--sm {
+  min-height: 44px;
+  font-size: 14px;
+}
+
+[data-theme='paw'] .chip,
+[data-theme='paw'] .secondary-btn,
+[data-theme='paw'] .tab {
+  border-width: 2px;
+  border-radius: 999px;
+  font-weight: 600;
+}
+
+[data-theme='paw'] .badge,
+[data-theme='paw'] .tag {
+  border-width: 2px;
+  font-weight: 600;
+}
+
+[data-theme='paw'] .tag--year {
+  background: #ffd23f;
+  border-color: #ffd23f;
+  color: #10305c;
+}
+
+[data-theme='paw'] .icon-btn {
+  border-width: 2px;
+}
+
+/* Кнопка режиму в увімкненому стані — жовта «медаль» із лапою. */
+[data-theme='paw'] .paw-btn {
+  border-color: #ffd23f;
+  background: linear-gradient(180deg, #fffdf3 0%, #fff6d6 100%);
+}
+
+[data-theme='paw'] .paw-btn__paw {
+  background: #ffd23f;
+  border-color: #f2b705;
+}
+
+[data-theme='paw'] .paw-btn__paw svg {
+  fill: #10305c;
+}
+
+[data-theme='paw'] .doc-card__name {
+  color: #0f76d6;
+}
+
+[data-theme='paw'] .sheet {
+  border-radius: 26px 26px 0 0;
+  border-top: 4px solid #ffd23f;
+}
+
+/* Лапа «стрибає» під час перемикання режиму. */
+.paw-btn.is-switching .paw-btn__paw {
+  animation: paw-pop 0.5s ease;
+}
+
+@keyframes paw-pop {
+  0% {
+    transform: scale(1) rotate(0deg);
+  }
+  45% {
+    transform: scale(1.25) rotate(-14deg);
+  }
+  100% {
+    transform: scale(1) rotate(0deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .paw-btn.is-switching .paw-btn__paw {
+    animation: none;
+  }
+}
+
+/* ──────────────────────────── Тост ──────────────────────────── */
+
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: calc(var(--safe-bottom) + 24px);
+  transform: translateX(-50%);
+  max-width: 90vw;
+  padding: 12px 18px;
+  border-radius: 999px;
+  background: #1d2942;
+  color: #eef3fb;
+  font-size: 14px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+  z-index: 10;
+}

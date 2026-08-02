@@ -1,0 +1,209 @@
+<!doctype html>
+<html lang="uk">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Декларація за ПІБ</title>
+    <meta name="description" content="Пошук декларацій державних службовців у Єдиному державному реєстрі декларацій за прізвищем, іменем та по батькові." />
+    <meta name="theme-color" content="#0b1220" />
+    <meta name="color-scheme" content="dark light" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Декларація" />
+    <link rel="manifest" href="./manifest.webmanifest" />
+    <link rel="icon" href="./icons/favicon-32.png" sizes="32x32" />
+    <link rel="apple-touch-icon" href="./icons/apple-touch-icon.png" />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="app">
+      <header class="topbar">
+        <div class="topbar__title">
+          <h1>Декларація за ПІБ</h1>
+          <p id="subtitle">Єдиний державний реєстр декларацій</p>
+        </div>
+        <button id="settingsBtn" class="icon-btn" type="button" aria-label="Налаштування" aria-haspopup="dialog">
+          <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+            <path
+              d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z M19.4 13a7.6 7.6 0 0 0 0-2l2-1.6-2-3.4-2.4 1a7.6 7.6 0 0 0-1.7-1L15 3.4h-4l-.3 2.6a7.6 7.6 0 0 0-1.7 1l-2.4-1-2 3.4L4.6 11a7.6 7.6 0 0 0 0 2l-2 1.6 2 3.4 2.4-1c.5.4 1.1.8 1.7 1l.3 2.6h4l.3-2.6c.6-.2 1.2-.6 1.7-1l2.4 1 2-3.4-2-1.6Z"
+            />
+          </svg>
+        </button>
+      </header>
+
+      <main class="content">
+        <!-- Крок 1: одне поле для ПІБ. -->
+        <section class="search-card" aria-labelledby="searchLabel">
+          <label id="searchLabel" class="field-label" for="pib">Прізвище, імʼя та по батькові</label>
+          <form id="searchForm" autocomplete="off">
+            <div class="field">
+              <textarea
+                id="pib"
+                name="pib"
+                rows="3"
+                inputmode="text"
+                enterkeyhint="enter"
+                autocapitalize="words"
+                autocorrect="off"
+                spellcheck="false"
+                placeholder="Іваненко&#10;Іван&#10;Іванович"
+                aria-describedby="hint"
+              ></textarea>
+              <button id="clearBtn" class="clear-btn" type="button" aria-label="Очистити" hidden>
+                <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                  <path d="M6.4 5 5 6.4 10.6 12 5 17.6 6.4 19 12 13.4 17.6 19 19 17.6 13.4 12 19 6.4 17.6 5 12 10.6 6.4 5Z" />
+                </svg>
+              </button>
+            </div>
+            <p id="hint" class="hint">
+              Можна в один рядок або з переносами — рядки склеюються автоматично. До запиту Google додається слово
+              «декларація».
+            </p>
+            <p id="preview" class="preview" hidden></p>
+            <button id="submitBtn" class="primary-btn" type="submit">
+              <span class="primary-btn__label">Знайти декларації</span>
+              <span class="spinner" aria-hidden="true"></span>
+            </button>
+          </form>
+
+          <div class="chips" id="actionChips" hidden>
+            <a id="googleChip" class="chip" target="_blank" rel="noopener noreferrer">
+              <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false" class="chip__icon">
+                <path d="M10.5 3a7.5 7.5 0 1 0 4.6 13.4l4.3 4.3 1.4-1.4-4.3-4.3A7.5 7.5 0 0 0 10.5 3Zm0 2a5.5 5.5 0 1 1 0 11 5.5 5.5 0 0 1 0-11Z" />
+              </svg>
+              <span id="googleChipLabel">Загуглити</span>
+            </a>
+            <a id="registryChip" class="chip" target="_blank" rel="noopener noreferrer">
+              <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false" class="chip__icon">
+                <path d="M5 3h9l5 5v13a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1Zm8 1.5V9h4.5L13 4.5ZM7 12h10v1.6H7V12Zm0 3.4h10V17H7v-1.6Z" />
+              </svg>
+              <span>Google → реєстр НАЗК</span>
+            </a>
+          </div>
+        </section>
+
+        <!-- Окрема кнопка: перемикає весь інтерфейс у «щенячий» режим. -->
+        <button id="pawBtn" class="paw-btn" type="button" aria-pressed="false">
+          <span class="paw-btn__paw" aria-hidden="true">
+            <svg viewBox="0 0 24 24" focusable="false">
+              <ellipse cx="7" cy="8.5" rx="2.5" ry="3.1" />
+              <ellipse cx="12" cy="6.6" rx="2.6" ry="3.3" />
+              <ellipse cx="17" cy="8.5" rx="2.5" ry="3.1" />
+              <path d="M12 11.4c3.1 0 5.6 2.4 5.6 5 0 1.9-1.6 3-3.6 2.7-.7-.1-1.3-.3-2-.3s-1.3.2-2 .3c-2 .3-3.6-.8-3.6-2.7 0-2.6 2.5-5 5.6-5Z" />
+            </svg>
+          </span>
+          <span class="paw-btn__text">
+            <span class="paw-btn__title" id="pawBtnTitle">Щенячий патруль</span>
+            <span class="paw-btn__sub" id="pawBtnSub">Увімкнути грайливий вигляд</span>
+          </span>
+        </button>
+
+        <!-- Історія запитів. -->
+        <section id="recentSection" class="recent" hidden>
+          <div class="recent__head">
+            <h2>Нещодавні</h2>
+            <button id="clearRecentBtn" class="link-btn" type="button">Очистити</button>
+          </div>
+          <div id="recentList" class="chips"></div>
+        </section>
+
+        <!-- Стани видачі. -->
+        <section id="status" class="status" hidden aria-live="polite"></section>
+
+        <section id="results" class="results" hidden aria-live="polite">
+          <div class="results__head">
+            <h2 id="resultsTitle">Знайдені документи</h2>
+            <span id="resultsCount" class="badge"></span>
+          </div>
+          <div id="resultsList" class="results__list"></div>
+          <button id="moreBtn" class="secondary-btn" type="button" hidden>Показати ще</button>
+        </section>
+
+        <p class="disclaimer">
+          Дані беруться з відкритого API Єдиного державного реєстру декларацій (НАЗК). Застосунок нічого не зберігає на
+          сервері — історія запитів лишається лише на цьому пристрої.
+        </p>
+      </main>
+    </div>
+
+    <!-- Повний документ: усі поля + сирий JSON. -->
+    <dialog id="docDialog" class="sheet" aria-labelledby="docTitle">
+      <div class="sheet__head">
+        <div>
+          <h2 id="docTitle">Документ</h2>
+          <p id="docSubtitle" class="sheet__subtitle"></p>
+        </div>
+        <button id="docCloseBtn" class="icon-btn" type="button" aria-label="Закрити">
+          <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+            <path d="M6.4 5 5 6.4 10.6 12 5 17.6 6.4 19 12 13.4 17.6 19 19 17.6 13.4 12 19 6.4 17.6 5 12 10.6 6.4 5Z" />
+          </svg>
+        </button>
+      </div>
+
+      <div class="tabs" role="tablist">
+        <button class="tab" id="tabJson" role="tab" aria-selected="true" aria-controls="paneJson" type="button">JSON</button>
+        <button class="tab" id="tabFields" role="tab" aria-selected="false" aria-controls="paneFields" type="button">Усі поля</button>
+      </div>
+
+      <div class="sheet__toolbar">
+        <button id="copyBtn" class="secondary-btn secondary-btn--sm" type="button">Копіювати JSON</button>
+        <button id="shareBtn" class="secondary-btn secondary-btn--sm" type="button">Поділитися</button>
+        <button id="downloadBtn" class="secondary-btn secondary-btn--sm" type="button">Зберегти .json</button>
+        <a id="openRegistryBtn" class="secondary-btn secondary-btn--sm" target="_blank" rel="noopener noreferrer">У реєстрі</a>
+      </div>
+
+      <div class="sheet__body">
+        <div id="paneJson" role="tabpanel" aria-labelledby="tabJson">
+          <pre id="jsonView" class="json"></pre>
+        </div>
+        <div id="paneFields" role="tabpanel" aria-labelledby="tabFields" hidden>
+          <label class="switch">
+            <input id="showEmpty" type="checkbox" />
+            <span>Показувати порожні поля</span>
+          </label>
+          <div id="fieldsView"></div>
+        </div>
+      </div>
+    </dialog>
+
+    <!-- Налаштування: базовий URL API та обхід CORS. -->
+    <dialog id="settingsDialog" class="sheet" aria-labelledby="settingsTitle">
+      <div class="sheet__head">
+        <h2 id="settingsTitle">Налаштування</h2>
+        <button id="settingsCloseBtn" class="icon-btn" type="button" aria-label="Закрити">
+          <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+            <path d="M6.4 5 5 6.4 10.6 12 5 17.6 6.4 19 12 13.4 17.6 19 19 17.6 13.4 12 19 6.4 17.6 5 12 10.6 6.4 5Z" />
+          </svg>
+        </button>
+      </div>
+      <div class="sheet__body">
+        <label class="field-label" for="apiBase">Адреса API реєстру</label>
+        <input id="apiBase" class="text-input" type="url" inputmode="url" spellcheck="false" />
+        <p class="hint">Типове значення: https://public-api.nazk.gov.ua/v2</p>
+
+        <label class="switch switch--block">
+          <input id="proxyEnabled" type="checkbox" />
+          <span>Ходити через проксі (обхід CORS)</span>
+        </label>
+        <p class="hint">
+          Вмикайте, лише якщо прямий запит блокується браузером. Запити підуть через сторонній сервіс — він побачить, кого
+          ви шукаєте. Дані реєстру публічні, але вибір за вами.
+        </p>
+        <label class="field-label" for="proxyTemplate">Шаблон проксі</label>
+        <input id="proxyTemplate" class="text-input" type="text" inputmode="url" spellcheck="false" placeholder="https://corsproxy.io/?{url}" />
+        <p class="hint">Плейсхолдер <code>{url}</code> замінюється на адресу запиту.</p>
+
+        <div class="settings__actions">
+          <button id="settingsResetBtn" class="secondary-btn secondary-btn--sm" type="button">Скинути</button>
+          <button id="settingsSaveBtn" class="primary-btn primary-btn--sm" type="button">Зберегти</button>
+        </div>
+        <p class="hint hint--muted" id="versionLine"></p>
+      </div>
+    </dialog>
+
+    <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>

@@ -1,0 +1,13 @@
+{
+  "name": "paw-paw-patrol",
+  "version": "1.0.0",
+  "private": true,
+  "description": "PWA для пошуку декларацій державних службовців за ПІБ у Єдиному державному реєстрі декларацій.",
+  "type": "module",
+  "scripts": {
+    "test": "node --test 'tests/*.test.mjs'",
+    "start": "npx --yes http-server -p 8099 -c-1 .",
+    "icons": "python3 tools/make_icons.py"
+  },
+  "license": "MIT"
+}
