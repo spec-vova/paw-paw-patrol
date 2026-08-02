@@ -2,7 +2,9 @@ name: Deploy to GitHub Pages
 
 on:
   push:
-    branches: [main]
+    # Репозиторій створювався порожнім, тому типовою стала гілка claude/**.
+    # Лишаємо і main — на випадок перейменування чи злиття.
+    branches: [main, 'claude/**']
   workflow_dispatch:
 
 permissions:
