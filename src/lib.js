@@ -136,6 +136,77 @@ export function applyProxy(url, template) {
     : `${tpl}${encodeURIComponent(url)}`;
 }
 
+// ──────────────────── Власний бекенд (обхід Cloudflare) ─────────────
+
+/**
+ * Реєстр стоїть за Cloudflare, який відповідає 403 на запити з браузера.
+ * Тому запит іде через власний серверний посередник: він ходить до API
+ * «зсередини сервера», без заголовка Origin, і віддає JSON із CORS.
+ */
+
+/** Параметри, які посередник погоджується передавати далі. */
+export const FORWARDED_PARAMS = ['query', 'page', 'declaration_year', 'user_declarant_id'];
+
+const SAFE_PATH = /^documents\/(list|[A-Za-z0-9-]{1,64})$/;
+
+/**
+ * Перетворює запит до посередника на безпечний URL реєстру.
+ *
+ * Дозволені лише два відомі шляхи та вузький перелік параметрів — інакше
+ * посередник став би відкритим проксі до будь-якої адреси (SSRF).
+ *
+ * @param {URLSearchParams|{get(name: string): string|null}} searchParams
+ * @param {{base?: string}} [options]
+ * @returns {{ok: true, url: string} | {ok: false, error: string}}
+ */
+export function resolveUpstream(searchParams, options = {}) {
+  const { base = API_BASE } = options;
+  const path = (searchParams.get('path') || '').trim();
+
+  if (!path) return { ok: false, error: 'Не вказано параметр path.' };
+  if (!SAFE_PATH.test(path)) return { ok: false, error: `Недозволений шлях: ${path}` };
+
+  const forwarded = new URLSearchParams();
+  for (const name of FORWARDED_PARAMS) {
+    const value = searchParams.get(name);
+    if (value !== null && String(value).trim() !== '') forwarded.set(name, String(value));
+  }
+
+  const qs = forwarded.toString();
+  return { ok: true, url: `${base}/${path}${qs ? `?${qs}` : ''}` };
+}
+
+/** URL списку документів через власний бекенд. */
+export function buildBackendSearchUrl(backendBase, pib, options = {}) {
+  const { page = 1, declarationYear } = options;
+  const params = new URLSearchParams({ path: 'documents/list', query: normalizePib(pib) });
+  if (page && page > 1) params.set('page', String(page));
+  if (declarationYear) params.set('declaration_year', String(declarationYear));
+  return `${trimSlashes(backendBase)}?${params.toString()}`;
+}
+
+/** URL повного документа через власний бекенд. */
+export function buildBackendDocumentUrl(backendBase, id) {
+  const params = new URLSearchParams({ path: `documents/${String(id)}` });
+  return `${trimSlashes(backendBase)}?${params.toString()}`;
+}
+
+function trimSlashes(value) {
+  return String(value ?? '').trim().replace(/\/+$/, '');
+}
+
+/**
+ * Розпізнає сторінку-заглушку Cloudflare або будь-який HTML замість JSON.
+ * Потрібно, щоб замість полотна розмітки показати зрозуміле пояснення.
+ */
+export function looksLikeChallenge(text) {
+  const head = String(text ?? '').slice(0, 1500);
+  return (
+    /__CF\$cv\$params|cdn-cgi\/challenge|Attention Required|Just a moment/i.test(head) ||
+    /^\s*<(!doctype|html)\b/i.test(head)
+  );
+}
+
 // ───────────────────────── Розбір відповідей ────────────────────────
 
 const LIST_KEYS = ['items', 'data', 'results', 'documents', 'docs', 'rows'];

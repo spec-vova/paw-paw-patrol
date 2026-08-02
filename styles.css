@@ -931,6 +931,55 @@ body[data-theme='paw'] {
   }
 }
 
+/* ─────────────────────── Діагностика зʼєднання ──────────────── */
+
+.diagnostics {
+  margin: 10px 0 18px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--bg-elevated);
+  font-size: 13.5px;
+}
+
+.diagnostics__line {
+  margin: 0 0 6px;
+  padding-left: 20px;
+  position: relative;
+}
+
+.diagnostics__line:last-child {
+  margin-bottom: 0;
+}
+
+.diagnostics__line::before {
+  position: absolute;
+  left: 0;
+  font-weight: 700;
+}
+
+.diagnostics__line--ok::before {
+  content: '✓';
+  color: #2fa860;
+}
+
+.diagnostics__line--fail::before {
+  content: '✕';
+  color: var(--danger);
+}
+
+.diagnostics__line--pending::before {
+  content: '…';
+  color: var(--text-muted);
+}
+
+.settings__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 22px;
+}
+
 /* ──────────────────────────── Тост ──────────────────────────── */
 
 .toast {

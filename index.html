@@ -178,6 +178,24 @@
         </button>
       </div>
       <div class="sheet__body">
+        <label class="field-label" for="backendBase">Адреса власного бекенда</label>
+        <input
+          id="backendBase"
+          class="text-input"
+          type="url"
+          inputmode="url"
+          spellcheck="false"
+          placeholder="https://ваш-проєкт.vercel.app/api/registry"
+        />
+        <p class="hint">
+          Реєстр стоїть за Cloudflare і відхиляє запити з браузера. Посередник (<code>api/registry.js</code> на Vercel
+          або <code>worker.js</code> у Cloudflare Workers) ходить до API з сервера — інструкція в README. Порожнє поле —
+          запити йдуть напряму.
+        </p>
+
+        <button id="diagnoseBtn" class="secondary-btn" type="button">Перевірити зʼєднання</button>
+        <div id="diagnostics" class="diagnostics" hidden></div>
+
         <label class="field-label" for="apiBase">Адреса API реєстру</label>
         <input id="apiBase" class="text-input" type="url" inputmode="url" spellcheck="false" />
         <p class="hint">Типове значення: https://public-api.nazk.gov.ua/v2</p>

@@ -8,7 +8,10 @@
 import {
   API_BASE,
   applyProxy,
+  buildBackendDocumentUrl,
+  buildBackendSearchUrl,
   buildDocumentUrl,
+  looksLikeChallenge,
   buildGoogleQuery,
   buildGoogleUrl,
   buildRegistryLink,
@@ -76,6 +79,9 @@ const els = {
   settingsDialog: $('settingsDialog'),
   settingsCloseBtn: $('settingsCloseBtn'),
   apiBase: $('apiBase'),
+  backendBase: $('backendBase'),
+  diagnoseBtn: $('diagnoseBtn'),
+  diagnostics: $('diagnostics'),
   proxyEnabled: $('proxyEnabled'),
   proxyTemplate: $('proxyTemplate'),
   settingsSaveBtn: $('settingsSaveBtn'),
@@ -86,6 +92,9 @@ const els = {
 
 const DEFAULT_SETTINGS = {
   apiBase: API_BASE,
+  // Адреса власного посередника (api/registry.js або worker.js).
+  // Порожня — застосунок ходить до реєстру напряму.
+  backendBase: '',
   proxyEnabled: false,
   proxyTemplate: 'https://corsproxy.io/?{url}',
 };
@@ -98,6 +107,7 @@ const state = {
   loading: false,
   currentDoc: null,
   currentSummary: null,
+  lastRoute: null,
 };
 
 // ─────────────────────────── Сховище ────────────────────────────
@@ -216,48 +226,114 @@ class ApiError extends Error {
   }
 }
 
-async function fetchJson(url) {
-  const finalUrl = state.settings.proxyEnabled ? applyProxy(url, state.settings.proxyTemplate) : url;
+async function fetchOnce(url, timeoutMs = REQUEST_TIMEOUT_MS) {
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
 
   let response;
   try {
-    response = await fetch(finalUrl, {
-      method: 'GET',
-      headers: { Accept: 'application/json' },
-      signal: controller.signal,
-    });
+    response = await fetch(url, { method: 'GET', headers: { Accept: 'application/json' }, signal: controller.signal });
   } catch (error) {
     clearTimeout(timer);
     if (error.name === 'AbortError') {
-      throw new ApiError('Реєстр не відповів за 20 секунд.', { kind: 'timeout', url: finalUrl });
+      throw new ApiError('Сервер не відповів вчасно.', { kind: 'timeout', url });
     }
     // fetch кидає TypeError і на CORS, і на відсутність мережі —
     // розрізнити їх зі сторінки неможливо, тому пояснюємо обидва випадки.
-    throw new ApiError('Не вдалося зʼєднатися з реєстром.', { kind: 'network', url: finalUrl });
+    throw new ApiError('Не вдалося зʼєднатися.', { kind: 'network', url });
   }
   clearTimeout(timer);
 
   const text = await response.text();
+
   if (!response.ok) {
-    throw new ApiError(`Реєстр відповів помилкою ${response.status}.`, {
-      kind: 'http',
-      url: finalUrl,
+    // Власний посередник повертає причину машинно-читаним JSON.
+    const parsed = safeParse(text);
+    if (parsed?.error) {
+      throw new ApiError(parsed.error, {
+        kind: parsed.challenge ? 'challenge' : 'http',
+        url,
+        status: response.status,
+      });
+    }
+    throw new ApiError(`Сервер відповів помилкою ${response.status}.`, {
+      kind: looksLikeChallenge(text) ? 'challenge' : 'http',
+      url,
       status: response.status,
-      body: text.slice(0, 400),
+      body: looksLikeChallenge(text) ? null : text.slice(0, 300),
     });
   }
 
+  if (looksLikeChallenge(text)) {
+    throw new ApiError('Замість даних повернулась сторінка-заглушка.', { kind: 'challenge', url });
+  }
+
+  const parsed = safeParse(text);
+  if (parsed === undefined) {
+    throw new ApiError('Відповідь не є коректним JSON.', { kind: 'parse', url, body: text.slice(0, 300) });
+  }
+  return parsed;
+}
+
+function safeParse(text) {
   try {
     return JSON.parse(text);
   } catch {
-    throw new ApiError('Відповідь реєстру не є коректним JSON.', {
-      kind: 'parse',
-      url: finalUrl,
-      body: text.slice(0, 400),
+    return undefined;
+  }
+}
+
+/**
+ * Маршрути запиту в порядку спроб: власний бекенд → напряму → проксі.
+ * Реєстр за Cloudflare, тож напряму з браузера часто прилітає 403 —
+ * перший робочий маршрут запамʼятовується і далі йде першим.
+ */
+function buildRoutes(kind, params) {
+  const { backendBase, apiBase, proxyEnabled, proxyTemplate } = state.settings;
+  const routes = [];
+
+  if (backendBase) {
+    routes.push({
+      id: 'backend',
+      label: 'власний бекенд',
+      url:
+        kind === 'list'
+          ? buildBackendSearchUrl(backendBase, params.pib, { page: params.page })
+          : buildBackendDocumentUrl(backendBase, params.id),
     });
   }
+
+  const directUrl =
+    kind === 'list'
+      ? buildSearchUrl(params.pib, { page: params.page, base: apiBase })
+      : buildDocumentUrl(params.id, { base: apiBase });
+  routes.push({ id: 'direct', label: 'напряму до реєстру', url: directUrl });
+
+  if (proxyEnabled) {
+    routes.push({ id: 'proxy', label: 'через проксі', url: applyProxy(directUrl, proxyTemplate) });
+  }
+
+  // Маршрут, який спрацював минулого разу, пробуємо першим.
+  routes.sort((a, b) => (a.id === state.lastRoute ? -1 : b.id === state.lastRoute ? 1 : 0));
+  return routes;
+}
+
+/** Пробує маршрути по черзі; кидає помилку останнього, якщо не зміг жоден. */
+async function fetchViaRoutes(routes) {
+  const failures = [];
+  for (const route of routes) {
+    try {
+      const payload = await fetchOnce(route.url, routes.length > 1 ? 12000 : REQUEST_TIMEOUT_MS);
+      state.lastRoute = route.id;
+      return payload;
+    } catch (error) {
+      error.routeLabel = route.label;
+      failures.push(error);
+    }
+  }
+  const last = failures[failures.length - 1];
+  last.attempts = failures.map((e) => `${e.routeLabel}: ${e.message}`);
+  throw last;
 }
 
 // ──────────────────────────── Пошук ─────────────────────────────
@@ -285,8 +361,7 @@ async function loadPage() {
   if (!append) showStatus('info', ['Шукаю в реєстрі…']);
 
   try {
-    const url = buildSearchUrl(state.query, { page: state.page, base: state.settings.apiBase });
-    const payload = await fetchJson(url);
+    const payload = await fetchViaRoutes(buildRoutes('list', { pib: state.query, page: state.page }));
     const { items, total } = extractList(payload);
     const summaries = items.map(summarizeDocument);
 
@@ -368,6 +443,10 @@ function showStatus(kind, lines) {
       return p;
     })
   );
+  // Помилка може опинитись нижче краю екрана — підводимо її до очей.
+  if (kind !== 'info') {
+    els.status.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  }
 }
 
 function hideStatus() {
@@ -407,6 +486,19 @@ function showEmptyResult(payload) {
 function showError(error) {
   const lines = [error.message];
 
+  if (error.kind === 'challenge' || (error.kind === 'http' && error.status === 403)) {
+    lines.push(
+      'Реєстр стоїть за Cloudflare, і той відхиляє запити просто з браузера — до самого API вони не доходять.',
+      'Лікується власним посередником: розгорніть api/registry.js на Vercel або worker.js у Cloudflare Workers і впишіть його адресу в налаштуваннях («Адреса власного бекенда»).'
+    );
+    const open = document.createElement('button');
+    open.type = 'button';
+    open.className = 'chip';
+    open.textContent = 'Відкрити налаштування';
+    open.addEventListener('click', openSettings);
+    lines.push(open);
+  }
+
   if (error.kind === 'network') {
     lines.push(
       'Причина зазвичай одна з двох: немає інтернету або реєстр не дозволяє запити з браузера (CORS).',
@@ -431,6 +523,20 @@ function showError(error) {
 
   if (error.kind === 'http' && error.status === 429) {
     lines.push('Реєстр обмежив частоту запитів — зачекайте хвилину й спробуйте ще раз.');
+  }
+
+  // Перелік спроб допомагає зрозуміти, який маршрут ще варто полагодити.
+  if (error.attempts?.length > 1) {
+    const details = document.createElement('details');
+    const summary = document.createElement('summary');
+    summary.textContent = `Спроби (${error.attempts.length})`;
+    details.append(summary);
+    for (const attempt of error.attempts) {
+      const p = document.createElement('p');
+      p.textContent = attempt;
+      details.append(p);
+    }
+    lines.push(details);
   }
 
   if (error.body) {
@@ -485,7 +591,7 @@ async function openDocument(summary) {
   }
 
   try {
-    const doc = await fetchJson(buildDocumentUrl(summary.id, { base: state.settings.apiBase }));
+    const doc = await fetchViaRoutes(buildRoutes('document', { id: summary.id }));
     state.currentDoc = doc;
     renderDocument(doc);
   } catch (error) {
@@ -616,8 +722,46 @@ function suggestedFileName() {
 
 function syncSettingsForm() {
   els.apiBase.value = state.settings.apiBase;
+  els.backendBase.value = state.settings.backendBase;
   els.proxyEnabled.checked = state.settings.proxyEnabled;
   els.proxyTemplate.value = state.settings.proxyTemplate;
+}
+
+/**
+ * Пробує кожен маршрут окремо і показує, який працює.
+ * Перевірити зі свого телефона — єдиний надійний спосіб дізнатись,
+ * що саме пропускає мережа й Cloudflare.
+ */
+async function runDiagnostics() {
+  saveSettingsValues();
+  const probe = 'Іваненко Іван';
+  const routes = buildRoutes('list', { pib: probe, page: 1 });
+
+  els.diagnostics.hidden = false;
+  els.diagnoseBtn.disabled = true;
+  els.diagnostics.replaceChildren(diagnosticLine('Перевіряю…', 'pending'));
+
+  const results = [];
+  for (const route of routes) {
+    try {
+      const payload = await fetchOnce(route.url, 12000);
+      const { items } = extractList(payload);
+      results.push(diagnosticLine(`${route.label} — працює (документів: ${items.length})`, 'ok'));
+    } catch (error) {
+      results.push(diagnosticLine(`${route.label} — ${error.message}`, 'fail'));
+    }
+    els.diagnostics.replaceChildren(...results);
+  }
+
+  if (!results.length) els.diagnostics.replaceChildren(diagnosticLine('Немає жодного маршруту.', 'fail'));
+  els.diagnoseBtn.disabled = false;
+}
+
+function diagnosticLine(text, kind) {
+  const p = document.createElement('p');
+  p.className = `diagnostics__line diagnostics__line--${kind}`;
+  p.textContent = text;
+  return p;
 }
 
 function openSettings() {
@@ -626,13 +770,20 @@ function openSettings() {
   if (!els.settingsDialog.open) els.settingsDialog.showModal();
 }
 
-function saveSettings() {
+function saveSettingsValues() {
   state.settings = {
     apiBase: els.apiBase.value.trim().replace(/\/+$/, '') || DEFAULT_SETTINGS.apiBase,
+    backendBase: els.backendBase.value.trim().replace(/\/+$/, ''),
     proxyEnabled: els.proxyEnabled.checked,
     proxyTemplate: els.proxyTemplate.value.trim() || DEFAULT_SETTINGS.proxyTemplate,
   };
+  // Маршрути змінились — забуваємо, який працював раніше.
+  state.lastRoute = null;
   writeStore(STORAGE.settings, state.settings);
+}
+
+function saveSettings() {
+  saveSettingsValues();
   els.settingsDialog.close();
   toast('Збережено');
 }
@@ -675,6 +826,7 @@ els.docCloseBtn.addEventListener('click', () => els.docDialog.close());
 els.settingsCloseBtn.addEventListener('click', () => els.settingsDialog.close());
 els.settingsBtn.addEventListener('click', openSettings);
 els.settingsSaveBtn.addEventListener('click', saveSettings);
+els.diagnoseBtn.addEventListener('click', runDiagnostics);
 els.settingsResetBtn.addEventListener('click', () => {
   state.settings = { ...DEFAULT_SETTINGS };
   writeStore(STORAGE.settings, state.settings);
