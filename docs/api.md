@@ -26,6 +26,23 @@ dictionary in `src/lib/declaration.js`; unknown keys are shown verbatim next to
 their label. Whatever happens, the **JSON** tab shows the full response, so no
 data is silently lost.
 
+### Quirks confirmed against live responses
+
+- **Every step wraps its payload once more:**
+  `step_3: { data: { "1": {...}, "2": {...} }, isNotApplicable: 0 }`. Without
+  unwrapping that level, a section with twenty properties renders as one entry
+  holding hundreds of dotted paths.
+- **Keys mix conventions** — `declaration_type` next to `cityType` next to
+  `actual_workPost` — so labels are matched by exact key, not by pattern.
+- **`<field>_extendedstatus` flags** shadow most fields and describe how a value
+  was filled in. They are marked technical and hidden with the empty values.
+- **Placeholders instead of values:** `[Не застосовується]` counts as empty,
+  while `[Конфіденційна інформація]` does not — the latter states that data
+  exists but is withheld, which is information in itself.
+- **Names can sit at any depth**, so the result card falls back to a shallow
+  key scan when the expected paths are absent. Exact top-level keys win first,
+  since a deep scan could otherwise pick up a relative's name.
+
 ## The Cloudflare problem
 
 The registry sits behind Cloudflare. A direct cross-origin request from a

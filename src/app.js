@@ -596,7 +596,7 @@ function toast(message) {
 async function openDocument(summary) {
   state.currentSummary = summary;
   state.currentDoc = null;
-  els.docTitle.textContent = summary.pib;
+  els.docTitle.textContent = summary.pib === '—' ? 'Декларація' : summary.pib;
   els.docSubtitle.textContent = 'Завантажую повний документ…';
   els.jsonView.textContent = '';
   els.fieldsView.replaceChildren();
@@ -639,6 +639,8 @@ function renderDocument(doc) {
 }
 
 function renderFields(sections) {
+  // The same switch reveals empty values and internal flags: both are noise
+  // for a reader, and both matter when checking what the registry actually sent.
   const showEmpty = els.showEmpty.checked;
   if (!sections.length) {
     const p = document.createElement('p');
@@ -651,7 +653,10 @@ function renderFields(sections) {
   const nodes = [];
   for (const section of sections) {
     const visibleEntries = section.entries
-      .map((entry) => ({ ...entry, rows: entry.rows.filter((row) => showEmpty || !row.empty) }))
+      .map((entry) => ({
+        ...entry,
+        rows: entry.rows.filter((row) => showEmpty || (!row.empty && !row.technical)),
+      }))
       .filter((entry) => entry.rows.length);
     if (!visibleEntries.length) continue;
 

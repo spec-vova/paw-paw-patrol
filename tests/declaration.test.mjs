@@ -12,6 +12,84 @@ import {
   unwrapDocument,
 } from '../src/lib/declaration.js';
 
+/**
+ * Shape captured from a live response, not invented: every step wraps its
+ * payload in `data`, keys mix snake_case and camelCase, `_extendedstatus`
+ * flags shadow most fields, and unavailable values arrive as placeholders.
+ */
+const LIVE_DOCUMENT = {
+  continue_perform_functions: 1,
+  corruption_affected: 2,
+  data: {
+    step_0: {
+      data: {
+        declaration_type: 'Щорічна',
+        continue_perform_functions: 1,
+        declaration_period: '2025',
+        declaration_year: 2025,
+      },
+      isNotApplicable: 0,
+    },
+    step_1: {
+      data: {
+        lastname: 'Хміль',
+        firstname: 'Владислав',
+        middlename: 'Богданович',
+        cityType: 'Село',
+        country: '1',
+        postCategory: '[Не застосовується]',
+        passport: '[Конфіденційна інформація]',
+        responsiblePosition: 'Ні',
+        community_extendedstatus: '0',
+        region_extendedstatus: '0',
+        actual_cityType_extendedstatus: '1',
+      },
+    },
+    step_3: {
+      data: {
+        1: { objectType: 'Квартира', totalArea: '74.5', ua_cityType: 'м. Київ' },
+        2: { objectType: 'Гараж', totalArea: '18' },
+      },
+      isNotApplicable: 0,
+    },
+  },
+};
+
+test('each step is unwrapped so records stay separate', () => {
+  const sections = flattenDocument(LIVE_DOCUMENT);
+  const property = sections.find((section) => section.key === 'step_3');
+
+  assert.equal(property.entries.length, 2, 'two properties, not one blob of dotted paths');
+  assert.equal(property.entries[0].rows[0].label, 'Тип обʼєкта');
+  assert.equal(property.entries[0].rows[0].text, 'Квартира');
+  assert.ok(
+    property.entries[0].rows.every((row) => !row.path.startsWith('data.')),
+    'the wrapper level does not leak into field paths'
+  );
+});
+
+test('registry placeholders and internal flags are separated from real data', () => {
+  const sections = flattenDocument(LIVE_DOCUMENT);
+  const general = sections.find((section) => section.key === 'step_1').entries[0];
+  const row = (key) => general.rows.find((item) => item.key === key);
+
+  assert.equal(row('postCategory').empty, true, '"[Не застосовується]" carries nothing');
+  assert.equal(row('passport').empty, false, '"[Конфіденційна інформація]" is a real statement');
+  assert.equal(row('community_extendedstatus').technical, true);
+  assert.equal(row('lastname').technical, false);
+
+  // Both kinds are hidden by default, so the count reflects declared data only:
+  // lastname, firstname, middlename, cityType, country, passport, responsiblePosition.
+  assert.equal(countFields([{ entries: [general] }]), 7);
+});
+
+test('the card finds a name however deeply the registry buried it', () => {
+  const summary = summarizeDocument(LIVE_DOCUMENT);
+  assert.equal(summary.pib, 'Хміль Владислав Богданович');
+  assert.equal(summary.year, 2025);
+  assert.equal(summary.type, 'Щорічна');
+});
+
 test('extractList finds the array in different response shapes', () => {
   assert.deepEqual(extractList([{ id: 1 }]).items, [{ id: 1 }]);
   assert.deepEqual(extractList({ items: [{ id: 2 }] }).items, [{ id: 2 }]);

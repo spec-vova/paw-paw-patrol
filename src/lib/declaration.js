@@ -62,11 +62,36 @@ function firstString(...values) {
   return null;
 }
 
+/**
+ * Flattens an item into "key → first non-empty scalar", ignoring nesting.
+ *
+ * The registry buries the same field at different depths depending on the
+ * endpoint and the year, so probing fixed paths misses it and the card ends up
+ * showing a dash. A shallow key lookup finds it wherever it sits.
+ *
+ * Only a fallback: exact top-level keys are preferred, because a deep scan can
+ * pick up a relative's name from a nested record.
+ */
+function collectFields(node, depth = 0, out = new Map()) {
+  if (!node || typeof node !== 'object' || depth > 5) return out;
+
+  for (const [key, value] of Object.entries(node)) {
+    if (value && typeof value === 'object') {
+      collectFields(value, depth + 1, out);
+    } else if (!out.has(key) && !isEmptyValue(value)) {
+      out.set(key, String(value).trim());
+    }
+  }
+  return out;
+}
+
 /** Reduces a list item to the fields a result card needs. */
 export function summarizeDocument(item) {
   const src = item && typeof item === 'object' ? item : {};
   const data = src.data && typeof src.data === 'object' ? src.data : {};
   const step1 = data.step_1 && typeof data.step_1 === 'object' ? data.step_1 : {};
+  const deep = collectFields(src);
+  const at = (...keys) => firstString(...keys.map((key) => deep.get(key)));
 
   const pib =
     firstString(
@@ -76,24 +101,42 @@ export function summarizeDocument(item) {
       src.declarant_name,
       joinName(src.lastname, src.firstname, src.middlename),
       joinName(src.last_name, src.first_name, src.middle_name),
-      joinName(step1.lastname, step1.firstname, step1.middlename)
+      joinName(step1.lastname, step1.firstname, step1.middlename),
+      at('pib', 'fullname', 'full_name', 'declarant_name', 'eng_full_name'),
+      joinName(deep.get('lastname'), deep.get('firstname'), deep.get('middlename')),
+      joinName(deep.get('last_name'), deep.get('first_name'), deep.get('middle_name'))
     ) || '—';
 
   return {
-    id: firstString(src.id, src.doc_uuid, src.document_id, src.uuid, src.declaration_id),
+    id: firstString(src.id, src.doc_uuid, src.document_id, src.uuid, src.declaration_id, at('id', 'doc_uuid')),
     pib,
-    position: firstString(src.position, src.post, src.workPost, src.work_post, step1.workPost, step1.post),
+    position: firstString(
+      src.position,
+      src.post,
+      src.workPost,
+      src.work_post,
+      step1.workPost,
+      step1.post,
+      at('workPost', 'position', 'post', 'actual_workPost')
+    ),
     agency: firstString(
       src.placeOfWork,
       src.place_of_work,
       src.organization,
       src.department,
       step1.workPlace,
-      step1.placeOfWork
+      step1.placeOfWork,
+      at('workPlace', 'placeOfWork', 'organization', 'actual_workPlace')
     ),
-    year: firstNumber(src.declaration_year, src.declarationYear, src.year, src.period),
-    type: firstString(src.declaration_type_name, src.type_name, src.declarationType, src.doc_type_name),
-    typeId: firstNumber(src.declaration_type, src.doc_type, src.type),
+    year: firstNumber(src.declaration_year, src.declarationYear, src.year, src.period, deep.get('declaration_year')),
+    type: firstString(
+      src.declaration_type_name,
+      src.type_name,
+      src.declarationType,
+      src.doc_type_name,
+      at('declaration_type')
+    ),
+    typeId: firstNumber(src.doc_type, src.type),
     date: firstString(src.date, src.created_date, src.submitted_at, src.declaration_date, src.userDeclarantDate),
     corrected: Boolean(src.corrected ?? src.is_corrected),
     raw: src,
@@ -133,6 +176,12 @@ export const SECTION_TITLES = {
 
 /** Labels for the most common fields. Unknown keys are shown as they are. */
 export const FIELD_LABELS = {
+  declaration_type: 'Тип декларації',
+  declaration_period: 'Звітний період',
+  declaration_year: 'Звітний рік',
+  isNotApplicable: 'Не застосовується',
+  postCategory: 'Категорія посади',
+  passport: 'Паспорт',
   lastname: 'Прізвище',
   firstname: 'Імʼя',
   middlename: 'По батькові',
@@ -207,6 +256,14 @@ export const FIELD_LABELS = {
 
 const MONEY_KEY = /(cost|size|amount|sum|price|income|assets)/i;
 
+// Internal flags that accompany almost every field and carry nothing for a
+// reader: "<field>_extendedstatus" marks how the value was filled in.
+const TECHNICAL_KEY = /_extendedstatus$/i;
+
+// The registry writes placeholders instead of values. "not applicable" is
+// noise; "confidential" is meaningful — it says the data exists but is hidden.
+const NOT_APPLICABLE = /^\[(не застосовується|не застосовано|не заповнено)\]$/i;
+
 /**
  * Splits a document into sections and flat "field → value" rows.
  * Titles come from the payload when present, otherwise from the dictionaries.
@@ -221,10 +278,10 @@ export function flattenDocument(doc) {
   return Object.keys(root)
     .sort(compareStepKeys)
     .map((key) => {
-      const node = root[key];
+      const node = unwrapStep(root[key]);
       return {
         key,
-        title: sectionTitle(key, node),
+        title: sectionTitle(key, root[key]),
         entries: toEntries(node).map((entry, index) => ({
           title: entryTitle(entry.value, index, entry.key),
           rows: toRows(entry.value, key),
@@ -232,6 +289,20 @@ export function flattenDocument(doc) {
       };
     })
     .filter((section) => section.entries.some((entry) => entry.rows.length));
+}
+
+/**
+ * Every step wraps its payload one level deeper:
+ * `step_3: { data: {"1": {...}, "2": {...}}, isNotApplicable: 0 }`.
+ *
+ * Without unwrapping, a section with twenty properties collapses into a single
+ * entry holding hundreds of dotted paths instead of twenty readable records.
+ */
+function unwrapStep(node) {
+  if (node && typeof node === 'object' && !Array.isArray(node) && node.data && typeof node.data === 'object') {
+    return node.data;
+  }
+  return node;
 }
 
 /** Finds the declaration data root across the possible response wrappers. */
@@ -329,6 +400,7 @@ function makeRow(key, value, path) {
     value,
     text: formatValue(key, value),
     empty: isEmptyValue(value),
+    technical: isTechnicalKey(key),
   };
 }
 
@@ -336,7 +408,13 @@ function makeRow(key, value, path) {
 export function isEmptyValue(value) {
   if (value === null || value === undefined) return true;
   const text = String(value).trim();
-  return text === '' || text === '[]' || text === '{}' || text.toLowerCase() === 'null';
+  if (text === '' || text === '[]' || text === '{}' || text.toLowerCase() === 'null') return true;
+  return NOT_APPLICABLE.test(text);
+}
+
+/** Whether a key is an internal flag rather than declared information. */
+export function isTechnicalKey(key) {
+  return TECHNICAL_KEY.test(String(key));
 }
 
 /** Human label for a field: dictionary → de-camel-cased key → key itself. */
@@ -377,7 +455,11 @@ export function formatValue(key, value) {
 export function countFields(sections) {
   return sections.reduce(
     (total, section) =>
-      total + section.entries.reduce((sum, entry) => sum + entry.rows.filter((row) => !row.empty).length, 0),
+      total +
+      section.entries.reduce(
+        (sum, entry) => sum + entry.rows.filter((row) => !row.empty && !row.technical).length,
+        0
+      ),
     0
   );
 }
