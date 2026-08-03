@@ -8,6 +8,7 @@ import {
   buildDocumentUrl,
   buildSearchUrl,
   looksLikeChallenge,
+  normalizeBackendBase,
   resolveUpstream,
 } from '../src/lib/registry.js';
 
@@ -111,6 +112,42 @@ test('buildBackendSearchUrl trims a trailing slash and collapses the name', () =
   assert.equal(url.pathname, '/api/registry');
   assert.equal(url.searchParams.get('query'), 'Іваненко Іван');
   assert.equal(url.searchParams.get('page'), null);
+});
+
+test('normalizeBackendBase upgrades http to https on an https page', () => {
+  // Mixed content is blocked by the browser before the request leaves, and the
+  // resulting failure is indistinguishable from "no network".
+  const fixed = normalizeBackendBase('http://paw-paw-patrol-eta.vercel.app/api/registry');
+  assert.equal(fixed.value, 'https://paw-paw-patrol-eta.vercel.app/api/registry');
+  assert.match(fixed.warning, /https/);
+});
+
+test('normalizeBackendBase leaves http alone when the page itself is http', () => {
+  const kept = normalizeBackendBase('http://localhost:3000/api/registry', { pageProtocol: 'http:' });
+  assert.equal(kept.value, 'http://localhost:3000/api/registry');
+  assert.equal(kept.warning, null);
+});
+
+test('normalizeBackendBase accepts a same-origin path and adds a missing scheme', () => {
+  assert.deepEqual(normalizeBackendBase('/api/registry'), { value: '/api/registry', warning: null });
+  assert.deepEqual(normalizeBackendBase('  /api/registry/  '), { value: '/api/registry', warning: null });
+
+  const bare = normalizeBackendBase('project.vercel.app/api/registry');
+  assert.equal(bare.value, 'https://project.vercel.app/api/registry');
+  assert.match(bare.warning, /https/);
+
+  assert.deepEqual(normalizeBackendBase('https://x.test/api'), { value: 'https://x.test/api', warning: null });
+  assert.deepEqual(normalizeBackendBase(''), { value: '', warning: null });
+  assert.deepEqual(normalizeBackendBase(null), { value: '', warning: null });
+});
+
+test('a normalized same-origin path still builds a usable request', () => {
+  const url = buildBackendSearchUrl(normalizeBackendBase('/api/registry').value, 'Іваненко Іван');
+  assert.equal(url, '/api/registry?path=documents%2Flist&query=%D0%86%D0%B2%D0%B0%D0%BD%D0%B5%D0%BD%D0%BA%D0%BE+%D0%86%D0%B2%D0%B0%D0%BD');
+
+  const resolved = resolveUpstream(new URL(url, 'https://app.test').searchParams);
+  assert.equal(resolved.ok, true);
+  assert.ok(resolved.url.includes('/documents/list'));
 });
 
 test('looksLikeChallenge detects the Cloudflare interstitial', () => {

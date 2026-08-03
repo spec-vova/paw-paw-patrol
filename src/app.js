@@ -13,7 +13,6 @@ import {
   buildBackendDocumentUrl,
   buildBackendSearchUrl,
   buildDocumentUrl,
-  looksLikeChallenge,
   buildGoogleQuery,
   buildGoogleUrl,
   buildRegistryLink,
@@ -21,6 +20,8 @@ import {
   countFields,
   extractList,
   flattenDocument,
+  looksLikeChallenge,
+  normalizeBackendBase,
   normalizePib,
   REGISTRY_HOST,
   summarizeDocument,
@@ -98,7 +99,8 @@ const DEFAULT_SETTINGS = {
   // Empty means requests go to the registry directly.
   backendBase: '',
   proxyEnabled: false,
-  proxyTemplate: 'https://corsproxy.io/?{url}',
+  // corsproxy.io now requires an API key outside localhost, so it is a poor default.
+  proxyTemplate: 'https://api.allorigins.win/raw?url={url}',
 };
 
 const state = {
@@ -773,9 +775,15 @@ function openSettings() {
 }
 
 function saveSettingsValues() {
+  const backend = normalizeBackendBase(els.backendBase.value, { pageProtocol: location.protocol });
+  if (backend.warning) {
+    els.backendBase.value = backend.value;
+    toast(backend.warning);
+  }
+
   state.settings = {
     apiBase: els.apiBase.value.trim().replace(/\/+$/, '') || DEFAULT_SETTINGS.apiBase,
-    backendBase: els.backendBase.value.trim().replace(/\/+$/, ''),
+    backendBase: backend.value,
     proxyEnabled: els.proxyEnabled.checked,
     proxyTemplate: els.proxyTemplate.value.trim() || DEFAULT_SETTINGS.proxyTemplate,
   };
@@ -885,6 +893,10 @@ for (const dialog of [els.docDialog, els.settingsDialog]) {
 
 function init() {
   state.settings = { ...DEFAULT_SETTINGS, ...readStore(STORAGE.settings, {}) };
+  // A previously saved address may still carry http:// — repair it on load.
+  state.settings.backendBase = normalizeBackendBase(state.settings.backendBase, {
+    pageProtocol: location.protocol,
+  }).value;
   applyTheme(readStore(STORAGE.theme, 'plain'));
   renderRecent();
   onInput();

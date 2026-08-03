@@ -185,12 +185,13 @@
           type="url"
           inputmode="url"
           spellcheck="false"
-          placeholder="https://ваш-проєкт.vercel.app/api/registry"
+          placeholder="/api/registry або https://проєкт.vercel.app/api/registry"
         />
         <p class="hint">
           Реєстр стоїть за Cloudflare і відхиляє запити з браузера. Посередник (<code>api/registry.js</code> на Vercel
-          або <code>worker.js</code> у Cloudflare Workers) ходить до API з сервера — інструкція в README. Порожнє поле —
-          запити йдуть напряму.
+          або <code>workers/registry.worker.js</code> у Cloudflare Workers) ходить до API з сервера — інструкція в
+          <code>docs/deploy.md</code>. Якщо застосунок відкрито з того самого домену, достатньо
+          <code>/api/registry</code>. Порожнє поле — запити йдуть напряму.
         </p>
 
         <button id="diagnoseBtn" class="secondary-btn" type="button">Перевірити зʼєднання</button>
@@ -209,7 +210,7 @@
           ви шукаєте. Дані реєстру публічні, але вибір за вами.
         </p>
         <label class="field-label" for="proxyTemplate">Шаблон проксі</label>
-        <input id="proxyTemplate" class="text-input" type="text" inputmode="url" spellcheck="false" placeholder="https://corsproxy.io/?{url}" />
+        <input id="proxyTemplate" class="text-input" type="text" inputmode="url" spellcheck="false" placeholder="https://api.allorigins.win/raw?url={url}" />
         <p class="hint">Плейсхолдер <code>{url}</code> замінюється на адресу запиту.</p>
 
         <div class="settings__actions">

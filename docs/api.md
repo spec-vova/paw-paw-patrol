@@ -78,6 +78,15 @@ The app tries routes in order and remembers the one that worked:
 1. **own backend** — when its address is set in settings;
 2. **direct** — works only where Cloudflare lets the browser through;
 3. **CORS proxy** — off by default; when enabled, a third party sees the query.
+   The default template points at allorigins; corsproxy.io now rejects anything
+   outside localhost without an API key.
+
+The backend address is normalised on save and on load: a missing scheme gets
+`https://`, and `http://` is upgraded whenever the page itself is served over
+https. Without that, the browser blocks the call as mixed content and `fetch`
+fails with the same generic error as a dead network — a trap that costs an
+evening to diagnose. A same-origin path such as `/api/registry` is accepted
+as is and is the simplest option when the page and the backend share a host.
 
 Settings contain a **«Перевірити зʼєднання»** button that probes each route
 separately and reports which one is alive. Running it from the actual phone is

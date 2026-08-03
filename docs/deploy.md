@@ -49,6 +49,16 @@ Open Settings → **«Перевірити зʼєднання»**. It probes eve
 and marks the working one. Do this on the phone that will actually use the app:
 the result depends on the local network and on what Cloudflare allows.
 
+If the backend row says «Не вдалося зʼєднатися», check in this order:
+
+1. **Scheme.** The address must be https (or a bare `/api/registry` path). The
+   app now repairs `http://` automatically, but a stale saved value from an
+   older build could still be wrong.
+2. **Function deployed.** Open `<backend>?path=documents/list&query=test` in the
+   browser directly — it should return JSON, not a 404 page.
+3. **Cloudflare.** A `challenge: true` error means the request reached
+   Cloudflare and was refused there; try the Worker instead of Vercel.
+
 ## Local
 
 ```bash

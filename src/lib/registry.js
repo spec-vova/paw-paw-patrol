@@ -74,6 +74,40 @@ export function resolveUpstream(searchParams, options = {}) {
   return { ok: true, url: `${base}/${path}${qs ? `?${qs}` : ''}` };
 }
 
+/**
+ * Cleans up a hand-typed backend address.
+ *
+ * A page served over https cannot call an http endpoint — the browser blocks
+ * it as mixed content before any request leaves, and fetch fails with the same
+ * generic error as "no network". Upgrading the scheme here removes the trap.
+ *
+ * @param {string} input
+ * @param {{pageProtocol?: string}} [options]
+ * @returns {{value: string, warning: string|null}}
+ */
+export function normalizeBackendBase(input, options = {}) {
+  const { pageProtocol = 'https:' } = options;
+  const raw = trimSlashes(input);
+
+  if (!raw) return { value: '', warning: null };
+  // A same-origin path such as /api/registry needs no scheme at all.
+  if (raw.startsWith('/')) return { value: raw, warning: null };
+
+  if (/^http:\/\//i.test(raw)) {
+    if (pageProtocol === 'https:') {
+      return {
+        value: raw.replace(/^http:\/\//i, 'https://'),
+        warning: 'Адресу виправлено на https:// — браузер блокує http-запити зі сторінки https.',
+      };
+    }
+    return { value: raw, warning: null };
+  }
+
+  if (/^https:\/\//i.test(raw)) return { value: raw, warning: null };
+
+  return { value: `https://${raw}`, warning: 'До адреси бекенда додано https://.' };
+}
+
 /** Document-list URL addressed to the own backend. */
 export function buildBackendSearchUrl(backendBase, pib, options = {}) {
   const { page = 1, declarationYear } = options;

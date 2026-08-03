@@ -267,6 +267,17 @@ await step('a configured backend gets around the block', async () => {
   if (cards !== 2) throw new Error(`cards: ${cards}`);
 });
 
+await step('the shipped module upgrades an http backend address', async () => {
+  // Locally the page is served over http, so saving through the UI would not
+  // trigger the upgrade; call the shipped module with an https page protocol.
+  const fixed = await page.evaluate(async () => {
+    const { normalizeBackendBase } = await import('./src/lib/registry.js');
+    return normalizeBackendBase('http://paw-paw-patrol-eta.vercel.app/api/registry', { pageProtocol: 'https:' });
+  });
+  if (!fixed.value.startsWith('https://')) throw new Error(`value: ${fixed.value}`);
+  if (!fixed.warning) throw new Error('the fix was silent');
+});
+
 await step('diagnostics report which route works', async () => {
   await page.click('#settingsBtn');
   await page.click('#diagnoseBtn');
