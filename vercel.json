@@ -5,7 +5,6 @@
   "outputDirectory": ".",
   "functions": {
     "api/registry.js": {
-      "runtime": "@vercel/node@5.3.24",
       "maxDuration": 20
     }
   }

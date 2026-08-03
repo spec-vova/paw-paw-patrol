@@ -4,6 +4,9 @@
   "private": true,
   "description": "PWA that looks up Ukrainian public-official declarations by full name.",
   "type": "module",
+  "engines": {
+    "node": "22.x"
+  },
   "scripts": {
     "test": "node --test 'tests/*.test.mjs'",
     "start": "npx --yes http-server -p 8099 -c-1 .",

@@ -15,6 +15,16 @@ Hosts the page and the backend on one origin, so CORS never enters the picture.
 
 The relative path works because the page and the function share an origin.
 
+### Node version
+
+`package.json` declares `engines.node: "22.x"`, which is what Vercel uses for
+the function runtime — it overrides the dashboard setting, so a project created
+with Node 24.x still builds. `vercel.json` deliberately does not pin a
+`@vercel/node` version: a pinned builder eventually stops matching the Node
+version the project is configured with, and the build fails with
+`Found invalid Node.js Version`. If that error appears anyway, set **Project
+Settings → Node.js Version → 22.x**.
+
 ## Cloudflare Workers
 
 Useful when the page stays on GitHub Pages.
