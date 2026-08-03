@@ -59,6 +59,18 @@ Serves the static app only; pair it with one of the backends above.
 3. Open `https://<owner>.github.io/paw-paw-patrol/` and set the backend address
    in settings.
 
+## Updating an installed app
+
+The service worker is network-first: online, the page always comes from the
+server, and the cache only serves an offline launch. An earlier cache-first
+version pinned phones to a stale `index.html` after files moved into folders,
+which showed up as a blank screen — hence the change.
+
+If a device is ever stuck on a broken copy, the page itself offers a way out:
+when the app has not booted a few seconds after load, a panel appears with
+**«Очистити копію та перезапустити»**, which drops the caches, unregisters the
+service worker and reloads. No digging through phone settings.
+
 ## Verifying
 
 Open Settings → **«Перевірити зʼєднання»**. It probes every route separately

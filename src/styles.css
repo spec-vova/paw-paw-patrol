@@ -980,6 +980,25 @@ body[data-theme='paw'] {
   margin-top: 22px;
 }
 
+/* ────────────────────────── recovery hatch ──────────────────── */
+
+.recovery {
+  position: fixed;
+  inset: auto 16px calc(var(--safe-bottom) + 16px) 16px;
+  max-width: 608px;
+  margin: 0 auto;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--bg-elevated);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.4);
+  z-index: 20;
+}
+
+.recovery p {
+  margin: 0 0 6px;
+}
+
 /* ──────────────────────────── toast ─────────────────────────── */
 
 .toast {

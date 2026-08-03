@@ -946,6 +946,10 @@ function init() {
     startSearch();
   }
 
+  // Tells the inline recovery script that the module is alive.
+  window.__appBooted = true;
+  window.dispatchEvent(new Event('app-booted'));
+
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
       navigator.serviceWorker.register('./sw.js').catch(() => {

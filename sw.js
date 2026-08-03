@@ -1,10 +1,15 @@
 /**
- * Service worker: caches the app shell so the home-screen icon opens instantly
- * and offline. Registry requests are never cached — declaration data is always
- * fetched fresh.
+ * Service worker: keeps the app openable offline without ever serving stale
+ * code online.
+ *
+ * The first version was cache-first, which was a mistake: when files moved into
+ * folders, phones kept serving the cached shell and a deploy simply never
+ * arrived. Network-first inverts that — the cache is a fallback for offline,
+ * not the source of truth. Registry data is never cached; declarations must be
+ * current.
  */
 
-const CACHE = 'pp-shell-v1';
+const CACHE = 'pp-shell-v2';
 
 const SHELL = [
   './',
@@ -51,19 +56,25 @@ self.addEventListener('fetch', (event) => {
 
   event.respondWith(
     (async () => {
-      const cached = await caches.match(request, { ignoreSearch: true });
-      const network = fetch(request)
-        .then((response) => {
-          if (response.ok) {
-            const copy = response.clone();
-            caches.open(CACHE).then((cache) => cache.put(request, copy));
-          }
-          return response;
-        })
-        .catch(() => null);
+      try {
+        const response = await fetch(request);
+        if (response.ok) {
+          const copy = response.clone();
+          caches.open(CACHE).then((cache) => cache.put(request, copy));
+        }
+        return response;
+      } catch {
+        // Offline: fall back to whatever was cached, then to the shell, so a
+        // home-screen launch still opens instead of showing a browser error.
+        const cached = await caches.match(request, { ignoreSearch: true });
+        if (cached) return cached;
 
-      // Serve from cache first, refresh it from the network in the background.
-      return cached || (await network) || new Response('Офлайн', { status: 503, statusText: 'Offline' });
+        if (request.mode === 'navigate') {
+          const shell = await caches.match('./index.html');
+          if (shell) return shell;
+        }
+        return new Response('Офлайн', { status: 503, statusText: 'Offline' });
+      }
     })()
   );
 });

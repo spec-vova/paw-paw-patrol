@@ -223,6 +223,53 @@
 
     <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
 
+    <!--
+      Recovery hatch. A stale service worker can pin an old index.html to files
+      that have since moved, and the result is a blank screen with no way out
+      from a home-screen icon. If the app has not booted shortly after load,
+      offer to drop the caches and start over.
+    -->
+    <div id="recovery" class="recovery" hidden>
+      <p><strong>Застосунок не завантажився.</strong></p>
+      <p class="hint">Найчастіша причина — застаріла збережена копія на цьому пристрої.</p>
+      <button id="recoveryBtn" class="primary-btn" type="button">Очистити копію та перезапустити</button>
+    </div>
+
+    <script>
+      // Deliberately a classic script, not a module: it has to run even when
+      // the module below fails to load.
+      window.__appBooted = false;
+
+      (function () {
+        var box = document.getElementById('recovery');
+        var timer = setTimeout(reveal, 6000);
+
+        window.addEventListener('app-booted', function () {
+          clearTimeout(timer);
+        });
+
+        function reveal() {
+          if (window.__appBooted) return;
+          box.hidden = false;
+        }
+
+        document.getElementById('recoveryBtn').addEventListener('click', async function () {
+          try {
+            if (window.caches) {
+              var keys = await caches.keys();
+              await Promise.all(keys.map(function (key) { return caches.delete(key); }));
+            }
+            if (navigator.serviceWorker) {
+              var regs = await navigator.serviceWorker.getRegistrations();
+              await Promise.all(regs.map(function (reg) { return reg.unregister(); }));
+            }
+          } finally {
+            location.replace(location.pathname + '?reset=' + Date.now());
+          }
+        });
+      })();
+    </script>
+
     <script type="module" src="./src/app.js"></script>
   </body>
 </html>

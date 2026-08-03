@@ -125,6 +125,31 @@ const step = async (name, fn) => {
 
 await page.goto(BASE, { waitUntil: 'networkidle' });
 
+await step('the app boots and the recovery hatch stays out of the way', async () => {
+  const booted = await page.evaluate(() => window.__appBooted === true);
+  if (!booted) throw new Error('the module did not signal a successful boot');
+  if (await page.isVisible('#recovery')) throw new Error('recovery shown on a healthy load');
+});
+
+await step('a broken shell surfaces the recovery hatch', async () => {
+  // Simulates what a stale service worker does: an index.html pinned to a
+  // script that has since moved. Without the hatch this is a blank screen.
+  //
+  // Needs its own context: in the main one the service worker is already
+  // registered and would serve the script from cache, which is the very
+  // failure this check is meant to observe.
+  const isolated = await browser.newContext({ ...devices['Pixel 7'], locale: 'uk-UA', serviceWorkers: 'block' });
+  const broken = await isolated.newPage();
+  await broken.route('**/src/app.js', (route) => route.fulfill({ status: 404, body: '' }));
+  await broken.goto(BASE);
+  await broken.waitForSelector('#recovery', { state: 'visible', timeout: 15000 });
+
+  // The hatch must clear the caches and reload rather than merely complain.
+  await broken.click('#recoveryBtn');
+  await broken.waitForURL(/reset=\d+/, { timeout: 10000 });
+  await isolated.close();
+});
+
 await step('multi-line name collapses in the preview', async () => {
   await page.fill('#pib', 'іваненко\nіван\nіванович');
   const preview = await page.textContent('#preview');
