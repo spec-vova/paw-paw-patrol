@@ -1,0 +1,22 @@
+# Cloudflare Workers deployment.
+#
+# Without this file wrangler guesses, and its guess is "static site": it then
+# tries to upload the whole repository as assets — node_modules included — and
+# fails on the 25 MiB limit. Naming the entry point keeps it to one script.
+#
+# Only the backend is deployed here. The static app is served from Vercel or
+# GitHub Pages; see docs/deploy.md.
+
+name = "paw-paw-patrol"
+main = "workers/registry.worker.js"
+compatibility_date = "2026-08-03"
+
+# The worker uses only Workers built-ins (fetch, URL, Response, AbortSignal),
+# so no nodejs_compat flag is required.
+
+[observability]
+enabled = true
+
+# Optional: point the backend at a different host without editing code.
+# [vars]
+# REGISTRY_API_BASE = "https://public-api.nazk.gov.ua/v2"

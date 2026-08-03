@@ -27,12 +27,28 @@ Settings → Node.js Version → 22.x**.
 
 ## Cloudflare Workers
 
-Useful when the page stays on GitHub Pages.
+Worth trying whenever Vercel's backend reports `challenge: true`: a Worker's
+request to the registry originates inside Cloudflare's own network instead of
+from a datacenter IP range, which is a different path rather than the same
+request with new headers.
+
+**From the dashboard (no repository needed).**
 
 1. dash.cloudflare.com → **Workers & Pages → Create → Worker**.
 2. Replace the editor contents with `workers/registry.worker.js` → **Deploy**.
    The file is self-contained, so this works from a phone.
 3. Put the resulting `https://<name>.<account>.workers.dev` into app settings.
+
+**From the repository (Workers Builds).**
+
+`wrangler.toml` declares the entry point, so `npx wrangler deploy` publishes the
+backend only. Without it wrangler guesses "static site", tries to upload the
+whole checkout as assets — `node_modules` included — and fails with
+`Asset too large` on the 122 MiB `workerd` binary. If you hit that error, the
+config is missing or not at the repository root.
+
+The Worker serves no static files by design: the page lives on Vercel or GitHub
+Pages, and only the registry calls go through Cloudflare.
 
 ## GitHub Pages
 
