@@ -20,7 +20,7 @@ The interface is in Ukrainian; the codebase is in English.
 
 ```bash
 npm start    # serve at http://127.0.0.1:8099/index.html
-npm test     # 50 tests, no dependencies
+npm test     # 63 tests, no dependencies
 npm run test:e2e  # 18 browser scenarios (needs Playwright + `npm start`)
 npm run icons  # regenerate PWA icons (needs Python + Pillow)
 ```
@@ -41,6 +41,7 @@ workers/registry.worker.js  the same backend for Cloudflare Workers
 wrangler.toml               Workers deployment (entry point, not a static site)
 tests/                      node --test suites
 tests/e2e/browser.mjs       browser walkthrough (needs Playwright)
+tests/fixtures/             a real declaration, names replaced
 docs/                       API reference and deployment guide
 tools/make_icons.py         icon generator
 ```

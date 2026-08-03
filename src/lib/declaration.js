@@ -157,7 +157,7 @@ function joinName(...parts) {
 export const SECTION_TITLES = {
   step_0: 'Тип декларації та звітний період',
   step_1: 'Загальна інформація про субʼєкта декларування',
-  step_2: 'Місце проживання',
+  step_2: 'Інформація про членів сімʼї',
   step_3: 'Обʼєкти нерухомості',
   step_4: 'Обʼєкти незавершеного будівництва',
   step_5: 'Цінне рухоме майно (крім транспортних засобів)',
@@ -172,6 +172,7 @@ export const SECTION_TITLES = {
   step_14: 'Видатки та правочини',
   step_15: 'Робота за сумісництвом',
   step_16: 'Членство в організаціях та їх органах',
+  step_17: 'Банківські та інші фінансові установи, у яких відкрито рахунки',
 };
 
 /** Labels for the most common fields. Unknown keys are shown as they are. */
@@ -181,7 +182,52 @@ export const FIELD_LABELS = {
   declaration_year: 'Звітний рік',
   isNotApplicable: 'Не застосовується',
   postCategory: 'Категорія посади',
+  postType: 'Тип посади',
+  workPlaceEdrpou: 'ЄДРПОУ місця роботи',
+  corruptionAffected: 'Причетність до корупції',
+  sameRegLivingAddress: 'Фактичне місце проживання збігається з реєстрацією',
+  region: 'Область',
+  district: 'Район',
+  community: 'Громада',
+  city: 'Населений пункт',
+  regNumber: 'Реєстраційний номер',
+  rightBelongs: 'Право належить',
+  otherOwnership: 'Інше право користування',
+  owningDate: 'Дата набуття права',
+  iteration: 'Ідентифікатор запису',
+  usage: 'Використання',
+  taxNumber: 'РНОКПП',
+  unzr: 'УНЗР',
+  previous_firstname: 'Попереднє імʼя',
+  previous_middlename: 'Попереднє по батькові',
   passport: 'Паспорт',
+  cityArea: 'Район міста',
+  ua_street: 'Вулиця',
+  ua_streetType: 'Тип вулиці',
+  ua_postCode: 'Поштовий індекс',
+  ua_apartmentsNum: 'Квартира',
+  ua_housePartNum: 'Частина будинку',
+  housePartNum: 'Частина будинку',
+  object_cost_type: 'Тип вартості обʼєкта',
+  establishment_ua_company_name: 'Установа',
+  establishment_type: 'Тип установи',
+  establishment_ua_company_code: 'Код ЄДРПОУ установи',
+  accounts: 'Рахунки',
+  account_number: 'Номер рахунку',
+  account_type: 'Тип рахунку',
+  person_open_account: 'Хто відкрив рахунок',
+  persons_has_accounts: 'Особи, які мають рахунки',
+  person_has_account: 'Особа має рахунок',
+  person_who_care: 'Особа, яка перебуває на утриманні',
+  nui_info_exists: 'Є документ іншої держави',
+  nui_first_name: 'Імʼя (за документом іншої держави)',
+  nui_last_name: 'Прізвище (за документом іншої держави)',
+  nui_middle_name: 'По батькові (за документом іншої держави)',
+  nui_document_type: 'Тип документа',
+  nui_document_country: 'Країна видачі',
+  nui_document_number: 'Номер документа',
+  nui_identity_number: 'Ідентифікаційний номер',
+  non_ukraine_identity: 'Документ іншої держави',
   lastname: 'Прізвище',
   firstname: 'Імʼя',
   middlename: 'По батькові',
@@ -258,7 +304,10 @@ const MONEY_KEY = /(cost|size|amount|sum|price|income|assets)/i;
 
 // Internal flags that accompany almost every field and carry nothing for a
 // reader: "<field>_extendedstatus" marks how the value was filled in.
-const TECHNICAL_KEY = /_extendedstatus$/i;
+// "<field>_extendedstatus" marks how the value was filled in; "<field>Path" is
+// a KATOTTG classifier code such as "1.UA61000000000060328.UA61040000000090285";
+// "iteration" is an internal record id. None of it is declared information.
+const TECHNICAL_KEY = /(_extendedstatus$|Path$|^iteration$)/i;
 
 // The registry writes placeholders instead of values. "not applicable" is
 // noise; "confidential" is meaningful — it says the data exists but is hidden.
@@ -362,9 +411,17 @@ function entryTitle(value, index, key) {
       value.name,
       value.brand && value.model ? `${value.brand} ${value.model}` : null,
       value.organization_name,
-      value.emitent_ua_company_name
+      value.emitent_ua_company_name,
+      value.establishment_ua_company_name,
+      // Property and vehicle records carry no name — the type reads better
+      // than "Запис 3" when a section lists a dozen of them.
+      value.objectType
     );
-    if (named) return named;
+    if (named) {
+      // "батько", "дружина" — the relation is the point of a family record.
+      const relation = firstString(value.subjectRelation);
+      return relation ? `${named} — ${relation}` : named;
+    }
   }
   return `Запис ${index + 1}${key && key !== String(index + 1) ? ` (${key})` : ''}`;
 }

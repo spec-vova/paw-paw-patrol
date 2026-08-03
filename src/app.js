@@ -412,7 +412,9 @@ function renderCard(summary) {
 
   const name = document.createElement('div');
   name.className = 'doc-card__name';
-  name.textContent = summary.pib;
+  // The list endpoint carries no declarant name; a dash reads as breakage, so
+  // fall back to the document type. The real name appears once it is opened.
+  name.textContent = summary.pib === '—' ? summary.type || 'Декларація' : summary.pib;
   card.append(name);
 
   for (const value of [summary.position, summary.agency]) {
@@ -631,8 +633,20 @@ function renderDocument(doc) {
   const sections = flattenDocument(doc);
   renderFields(sections);
 
+  // The list endpoint does not carry the declarant's name, but the document
+  // does — so fill in the heading once the full document has arrived.
+  const fromDoc = summarizeDocument(doc);
+  if (fromDoc.pib !== '—') {
+    els.docTitle.textContent = fromDoc.pib;
+    state.currentSummary = { ...state.currentSummary, pib: fromDoc.pib };
+  }
+
   const parts = [];
-  if (state.currentSummary?.year) parts.push(`за ${state.currentSummary.year} рік`);
+  const year = state.currentSummary?.year ?? fromDoc.year;
+  if (year) parts.push(`за ${year} рік`);
+  if (fromDoc.type) parts.push(fromDoc.type.toLowerCase());
+  if (fromDoc.position) parts.push(fromDoc.position);
+
   const fields = countFields(sections);
   if (fields) parts.push(`${fields} заповнених полів`);
   els.docSubtitle.textContent = parts.join(' · ') || 'Повний документ';

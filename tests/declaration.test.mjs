@@ -55,6 +55,58 @@ const LIVE_DOCUMENT = {
   },
 };
 
+/** step_2 and step_3 arrive as arrays, and step_2 is family, not an address. */
+const LIVE_SECTIONS = {
+  data: {
+    step_2: {
+      data: [
+        { lastname: 'Хміль', firstname: 'Богдан', middlename: 'Ростиславович', subjectRelation: 'батько' },
+        { lastname: 'Петринець', firstname: 'Віра', middlename: 'Петрівна', subjectRelation: 'баба' },
+      ],
+      isNotApplicable: 0,
+    },
+    step_3: {
+      data: [
+        {
+          objectType: 'Житловий будинок',
+          totalArea: '80,5',
+          owningDate: '27.03.2001',
+          cost_date_assessment: '[Не відомо]',
+          rights: [{ ownershipType: 'Власність', rightBelongs: '1617259788313' }],
+        },
+        { objectType: 'Земельна ділянка', totalArea: '0.25', owningDate: '13.03.2012' },
+      ],
+      isNotApplicable: 0,
+    },
+  },
+};
+
+test('family records are titled by name and relation', () => {
+  const family = flattenDocument(LIVE_SECTIONS).find((section) => section.key === 'step_2');
+
+  assert.equal(family.title, 'Інформація про членів сімʼї');
+  assert.equal(family.entries.length, 2);
+  assert.equal(family.entries[0].title, 'Хміль Богдан Ростиславович — батько');
+  assert.equal(family.entries[1].title, 'Петринець Віра Петрівна — баба');
+});
+
+test('property records are titled by object type instead of a bare index', () => {
+  const property = flattenDocument(LIVE_SECTIONS).find((section) => section.key === 'step_3');
+
+  assert.equal(property.entries[0].title, 'Житловий будинок');
+  assert.equal(property.entries[1].title, 'Земельна ділянка');
+
+  const nested = property.entries[0].rows.find((row) => row.key === 'ownershipType');
+  assert.equal(nested.path, 'rights.1.ownershipType', 'nested rights are expanded, not stringified');
+});
+
+test('"[Не відомо]" stays visible — a declared unknown is itself information', () => {
+  const property = flattenDocument(LIVE_SECTIONS).find((section) => section.key === 'step_3');
+  const row = property.entries[0].rows.find((item) => item.key === 'cost_date_assessment');
+  assert.equal(row.empty, false);
+  assert.equal(row.text, '[Не відомо]');
+});
+
 test('each step is unwrapped so records stay separate', () => {
   const sections = flattenDocument(LIVE_DOCUMENT);
   const property = sections.find((section) => section.key === 'step_3');
