@@ -84,9 +84,11 @@ const context = await browser.newContext({ ...devices['Pixel 7'], locale: 'uk-UA
 const page = await context.newPage();
 page.on('console', (m) => {
   if (m.type() !== 'error') return;
-  // Both come from routes this file stubs on purpose (aborted request, 403 page).
+  // All of these come from routes this file stubs on purpose: an aborted
+  // request, a Cloudflare 403 page, a backend reporting an upstream block.
   if (m.text().includes('ERR_FAILED')) return;
   if (m.text().includes('403 (Forbidden)')) return;
+  if (m.text().includes('502 (Bad Gateway)')) return;
   errors.push(`console: ${m.text()}`);
 });
 page.on('pageerror', (e) => errors.push(`pageerror: ${e.message}`));
@@ -99,6 +101,16 @@ await page.route('**/public-api.nazk.gov.ua/**', async (route) => {
 
 const shot = async (name, fullPage = false) => {
   if (OUT) await page.screenshot({ path: `${OUT}/${name}`, fullPage });
+};
+
+const setBackend = async (value) => {
+  await page.click('#settingsBtn');
+  await page.waitForSelector('#settingsDialog[open]');
+  await page.fill('#backendBase', value);
+  await page.click('#settingsSaveBtn');
+  await page.waitForSelector('#settingsDialog[open]', { state: 'hidden' });
+  const stored = await page.evaluate(() => JSON.parse(localStorage.getItem('pp.settings')).backendBase);
+  if (stored !== value) throw new Error(`backend not saved: ${stored}`);
 };
 
 const step = async (name, fn) => {
@@ -258,13 +270,42 @@ await page.route('**/my-backend.test/api/registry**', (route) =>
 );
 
 await step('a configured backend gets around the block', async () => {
-  await page.click('#settingsBtn');
-  await page.fill('#backendBase', 'https://my-backend.test/api/registry');
-  await page.click('#settingsSaveBtn');
+  await setBackend('https://my-backend.test/api/registry');
   await page.click('#submitBtn');
   await page.waitForSelector('.doc-card', { timeout: 8000 });
   const cards = await page.locator('.doc-card').count();
   if (cards !== 2) throw new Error(`cards: ${cards}`);
+});
+
+// The backend is reachable but Cloudflare refuses the server request too.
+await page.route('**/blocked-backend.test/api/registry**', (route) =>
+  route.fulfill({
+    status: 502,
+    contentType: 'application/json',
+    body: JSON.stringify({
+      error: 'Реєстр відхилив запит (захист Cloudflare).',
+      challenge: true,
+      upstreamStatus: 403,
+      tried: [
+        { profile: 'browser', status: 403, challenge: true },
+        { profile: 'plain', status: 403, challenge: true },
+      ],
+    }),
+  })
+);
+
+await step('a blocked backend gets advice about the worker, not about deploying', async () => {
+  await setBackend('https://blocked-backend.test/api/registry');
+  await page.fill('#pib', 'Хміль Владислав Богданович');
+  await page.click('#submitBtn');
+  await page.waitForSelector('.status--error', { timeout: 12000 });
+
+  const text = await page.textContent('#status');
+  if (!text.includes('Cloudflare Workers')) throw new Error(`message: ${text}`);
+  if (text.includes('розгорніть api/registry.js')) throw new Error('tells the user to deploy what already runs');
+  if (!text.includes('browser → 403')) throw new Error('the attempts made are not shown');
+
+  await setBackend('https://my-backend.test/api/registry');
 });
 
 await step('the shipped module upgrades an http backend address', async () => {

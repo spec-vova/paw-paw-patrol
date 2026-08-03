@@ -8,13 +8,32 @@ import http from 'node:http';
 import { after, test } from 'node:test';
 
 import handler from '../api/registry.js';
-import worker, { looksLikeChallenge as workerChallenge, resolveUpstream as workerResolve } from '../workers/registry.worker.js';
-import { looksLikeChallenge, resolveUpstream } from '../src/lib/registry.js';
+import worker, {
+  looksLikeChallenge as workerChallenge,
+  resolveUpstream as workerResolve,
+  UPSTREAM_HEADER_PROFILES as workerProfiles,
+} from '../workers/registry.worker.js';
+import { looksLikeChallenge, resolveUpstream, UPSTREAM_HEADER_PROFILES } from '../src/lib/registry.js';
 
 // ─── fake registry ───
 
 let mode = 'ok';
+const seen = [];
 const upstream = http.createServer((req, res) => {
+  seen.push({ url: req.url, headers: req.headers });
+
+  // Refuses the first header profile, accepts the second.
+  if (mode === 'challenge-once') {
+    if (seen.length === 1) {
+      res.writeHead(403, { 'Content-Type': 'text/html' });
+      res.end("<html><body><script>window.__CF$cv$params={r:'abc'};</script></body></html>");
+      return;
+    }
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ items: [], total: 0, via: 'second profile' }));
+    return;
+  }
+
   if (mode === 'challenge') {
     res.writeHead(403, { 'Content-Type': 'text/html' });
     res.end(
@@ -95,6 +114,53 @@ test('a Cloudflare interstitial becomes a clear error, not raw HTML', async () =
   assert.doesNotMatch(body.error, /<html/i, 'markup does not leak into the message');
 });
 
+test('a blocked first profile is retried with the second one', async () => {
+  mode = 'challenge-once';
+  seen.length = 0;
+
+  const res = await callHandler('?path=documents/list&query=Хміль');
+  assert.equal(res.statusCode, 200, 'the retry succeeded');
+  assert.equal(JSON.parse(res.body).via, 'second profile');
+  assert.equal(seen.length, 2, 'exactly one retry, not a loop');
+  assert.notEqual(seen[0].headers['user-agent'], seen[1].headers['user-agent'], 'the profiles differ');
+});
+
+test('the first attempt presents itself as a browser', async () => {
+  mode = 'ok';
+  seen.length = 0;
+
+  await callHandler('?path=documents/list&query=Хміль');
+  const [first] = seen;
+  assert.match(first.headers['user-agent'], /Chrome/, 'a self-identifying agent is refused by bot rules');
+  assert.equal(first.headers.referer, 'https://public.nazk.gov.ua/');
+  assert.equal(seen.length, 1, 'a successful request is not retried');
+});
+
+test('a persistent block reports every attempt it made', async () => {
+  mode = 'challenge';
+  seen.length = 0;
+
+  const res = await callHandler('?path=documents/list&query=Хміль');
+  assert.equal(res.statusCode, 502);
+
+  const body = JSON.parse(res.body);
+  assert.equal(body.challenge, true);
+  assert.equal(body.tried.length, UPSTREAM_HEADER_PROFILES.length, 'all profiles were tried');
+  assert.deepEqual(
+    body.tried.map((attempt) => attempt.profile),
+    UPSTREAM_HEADER_PROFILES.map((profile) => profile.id)
+  );
+  assert.match(body.error, /Cloudflare/, 'the reason is named, not guessed at by the user');
+});
+
+test('a non-block error is not retried', async () => {
+  mode = 'garbage';
+  seen.length = 0;
+
+  await callHandler('?path=documents/list&query=Хміль');
+  assert.equal(seen.length, 1, '200 with junk body is a real answer, not a block');
+});
+
 test('malformed upstream JSON does not break the backend', async () => {
   mode = 'garbage';
   const res = await callHandler('?path=documents/list&query=Іваненко');
@@ -157,4 +223,6 @@ test('the worker copy of the shared helpers has not drifted', () => {
   for (const text of ['<html>', '{"a":1}', 'window.__CF$cv$params={}', '', 'Just a moment...']) {
     assert.equal(workerChallenge(text), looksLikeChallenge(text), `mismatch on ${JSON.stringify(text)}`);
   }
+
+  assert.deepEqual(workerProfiles, UPSTREAM_HEADER_PROFILES, 'header profiles drifted apart');
 });

@@ -144,6 +144,43 @@ export function applyProxy(url, template) {
     : `${tpl}${encodeURIComponent(url)}`;
 }
 
+// ─────────────────────────── upstream headers ──────────────────────────
+
+/**
+ * Header sets the backend tries, in order, before giving up.
+ *
+ * Cloudflare decides per request, and the two profiles fail in opposite
+ * directions: a self-identifying client is refused by bot rules, while a
+ * browser impersonation is refused when the TLS fingerprint does not match the
+ * claimed browser. Trying both costs one extra request and sometimes wins.
+ *
+ * Neither profile can fake a TLS fingerprint, so a determined block still
+ * holds — see docs/api.md for what to do then.
+ */
+export const UPSTREAM_HEADER_PROFILES = [
+  {
+    id: 'browser',
+    headers: {
+      Accept: 'application/json, text/plain, */*',
+      'Accept-Language': 'uk-UA,uk;q=0.9,en;q=0.8',
+      'User-Agent':
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+      Referer: 'https://public.nazk.gov.ua/',
+      Origin: 'https://public.nazk.gov.ua',
+      'Sec-Fetch-Site': 'same-site',
+      'Sec-Fetch-Mode': 'cors',
+      'Sec-Fetch-Dest': 'empty',
+    },
+  },
+  {
+    id: 'plain',
+    headers: {
+      Accept: 'application/json',
+      'User-Agent': 'declaration-lookup/1.0',
+    },
+  },
+];
+
 // ──────────────────────────── response guard ───────────────────────────
 
 /**

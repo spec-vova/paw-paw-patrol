@@ -57,6 +57,13 @@ Two implementations, same behaviour, compared against each other in
   proxy to any address (SSRF).
 - `REGISTRY_API_BASE` retargets the upstream host without code changes.
 
+The backend attempts each request with more than one header profile (see
+`UPSTREAM_HEADER_PROFILES`): a browser-like one first, a self-identifying one
+second. Cloudflare refuses these for opposite reasons, so trying both costs one
+request and occasionally wins. Only a block (`403`, `429`, or an interstitial)
+triggers the retry — a `404` is a real answer. Neither profile can fake a TLS
+fingerprint, so a determined block still holds.
+
 **Response**
 
 | Status | Meaning |
@@ -67,7 +74,11 @@ Two implementations, same behaviour, compared against each other in
 | `502` | upstream error, Cloudflare interstitial (`challenge: true`), or unparseable body |
 | `504` | upstream timed out (15 s) |
 
-Errors are JSON: `{ error, challenge?, upstreamStatus?, upstreamUrl? }`.
+Errors are JSON:
+`{ error, challenge?, upstreamStatus?, upstreamUrl?, tried? }`, where `tried`
+lists the header profiles attempted and what each got back. The app uses
+`challenge` to tell "Cloudflare refused the server too" apart from "no backend
+deployed" and shows the right next step for each.
 Messages about endpoint misuse are in English; upstream failures are in
 Ukrainian because the app displays them as-is.
 

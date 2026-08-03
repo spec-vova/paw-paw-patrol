@@ -221,12 +221,16 @@ function boldNode(text) {
 // ──────────────────────────── network ──────────────────────────
 
 class ApiError extends Error {
-  constructor(message, { kind, url, status, body } = {}) {
+  constructor(message, { kind, url, status, body, fromBackend, tried } = {}) {
     super(message);
     this.kind = kind;
     this.url = url;
     this.status = status;
     this.body = body;
+    // Set when our own backend reported the failure rather than the browser
+    // hitting it: the advice to give the user is different.
+    this.fromBackend = fromBackend;
+    this.tried = tried;
   }
 }
 
@@ -258,6 +262,8 @@ async function fetchOnce(url, timeoutMs = REQUEST_TIMEOUT_MS) {
         kind: parsed.challenge ? 'challenge' : 'http',
         url,
         status: response.status,
+        fromBackend: true,
+        tried: parsed.tried,
       });
     }
     throw new ApiError(`Сервер відповів помилкою ${response.status}.`, {
@@ -335,9 +341,11 @@ async function fetchViaRoutes(routes) {
       failures.push(error);
     }
   }
-  const last = failures[failures.length - 1];
-  last.attempts = failures.map((e) => `${e.routeLabel}: ${e.message}`);
-  throw last;
+  // Report the most informative failure, not simply the last one: an error our
+  // own backend explained beats the browser's generic "could not connect".
+  const best = failures.find((error) => error.fromBackend) || failures[failures.length - 1];
+  best.attempts = failures.map((error) => `${error.routeLabel}: ${error.message}`);
+  throw best;
 }
 
 // ──────────────────────────── search ───────────────────────────
@@ -491,10 +499,20 @@ function showError(error) {
   const lines = [error.message];
 
   if (error.kind === 'challenge' || (error.kind === 'http' && error.status === 403)) {
-    lines.push(
-      'Реєстр стоїть за Cloudflare, і той відхиляє запити просто з браузера — до самого API вони не доходять.',
-      'Лікується власним посередником: розгорніть api/registry.js на Vercel або worker.js у Cloudflare Workers і впишіть його адресу в налаштуваннях («Адреса власного бекенда»).'
-    );
+    if (error.fromBackend) {
+      // The backend is alive and reached the registry — Cloudflare refused the
+      // server too, so pointing at «deploy a backend» would be wrong advice.
+      lines.push(
+        'Посередник працює і дійшов до реєстру, але Cloudflare відхилив і серверний запит.',
+        `Спроби посередника: ${(error.tried || []).map((t) => `${t.profile} → ${t.status}`).join(', ') || '—'}.`,
+        'Наступний крок — розгорнути посередника у Cloudflare Workers: запит піде зсередини мережі Cloudflare. Інструкція в docs/deploy.md.'
+      );
+    } else {
+      lines.push(
+        'Реєстр стоїть за Cloudflare, і той відхиляє запити просто з браузера — до самого API вони не доходять.',
+        'Лікується власним посередником: розгорніть api/registry.js на Vercel або workers/registry.worker.js у Cloudflare Workers і впишіть його адресу в налаштуваннях.'
+      );
+    }
     const open = document.createElement('button');
     open.type = 'button';
     open.className = 'chip';

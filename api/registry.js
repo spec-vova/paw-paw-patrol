@@ -2,15 +2,19 @@
  * Server-side backend for the declarations registry (Vercel function).
  *
  * Why it exists: public-api.nazk.gov.ua sits behind Cloudflare, which answers
- * 403 to browser requests. A server request carries no Origin header and a
- * plain User-Agent, so it gets through; the response is handed back to the
- * browser with permissive CORS.
+ * 403 to cross-origin browser requests. Going through a server removes the
+ * foreign Origin and returns the data with permissive CORS.
+ *
+ * Cloudflare may still refuse a datacenter IP, so each request is attempted
+ * with more than one header profile before giving up, and the failure is
+ * reported in a machine-readable form (`challenge`, `tried`) so the app can
+ * tell "blocked" apart from "broken".
  *
  * Only documents/list and documents/{id} plus a narrow parameter list are
  * allowed — see resolveUpstream(), otherwise this would be an open proxy.
  */
 
-import { looksLikeChallenge, resolveUpstream } from '../src/lib/index.js';
+import { looksLikeChallenge, resolveUpstream, UPSTREAM_HEADER_PROFILES } from '../src/lib/index.js';
 
 // Message language follows the audience: misuse of the endpoint (wrong method
 // or path) is reported in English, while upstream failures are shown verbatim
@@ -42,45 +46,45 @@ export default async function handler(request, response) {
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), UPSTREAM_TIMEOUT_MS);
+  const tried = [];
 
   try {
-    const upstream = await fetch(resolved.url, {
-      headers: {
-        Accept: 'application/json, text/plain, */*',
-        'Accept-Language': 'uk-UA,uk;q=0.9',
-        'User-Agent': 'Mozilla/5.0 (compatible; declaration-lookup/1.0)',
-      },
-      signal: controller.signal,
+    for (const profile of UPSTREAM_HEADER_PROFILES) {
+      const upstream = await fetch(resolved.url, { headers: profile.headers, signal: controller.signal });
+      const text = await upstream.text();
+      const challenge = looksLikeChallenge(text);
+
+      if (upstream.ok && !challenge) {
+        try {
+          return sendJson(response, 200, JSON.parse(text));
+        } catch {
+          return sendJson(response, 502, { error: 'Відповідь реєстру не є коректним JSON.', profile: profile.id });
+        }
+      }
+
+      tried.push({ profile: profile.id, status: upstream.status, challenge });
+
+      // Only a block is worth retrying with different headers; a 404 or 500
+      // means the request itself was understood.
+      const blocked = challenge || upstream.status === 403 || upstream.status === 429;
+      if (!blocked) break;
+    }
+
+    const last = tried[tried.length - 1];
+    return sendJson(response, 502, {
+      error: last.challenge
+        ? 'Реєстр відхилив запит (захист Cloudflare).'
+        : `Реєстр відповів помилкою ${last.status}.`,
+      upstreamStatus: last.status,
+      challenge: last.challenge,
+      upstreamUrl: resolved.url,
+      tried,
     });
-
-    const text = await upstream.text();
-
-    if (!upstream.ok) {
-      return sendJson(response, 502, {
-        error: `Реєстр відповів помилкою ${upstream.status}.`,
-        upstreamStatus: upstream.status,
-        challenge: looksLikeChallenge(text),
-        upstreamUrl: resolved.url,
-      });
-    }
-
-    if (looksLikeChallenge(text)) {
-      return sendJson(response, 502, {
-        error: 'Реєстр повернув сторінку-заглушку замість JSON.',
-        challenge: true,
-        upstreamUrl: resolved.url,
-      });
-    }
-
-    try {
-      return sendJson(response, 200, JSON.parse(text));
-    } catch {
-      return sendJson(response, 502, { error: 'Відповідь реєстру не є коректним JSON.' });
-    }
   } catch (error) {
     const timedOut = error.name === 'AbortError';
     return sendJson(response, timedOut ? 504 : 502, {
       error: timedOut ? 'Реєстр не відповів вчасно.' : `Не вдалося звернутися до реєстру: ${error.message}`,
+      tried,
     });
   } finally {
     clearTimeout(timer);

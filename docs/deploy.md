@@ -57,7 +57,11 @@ If the backend row says «Не вдалося зʼєднатися», check in t
 2. **Function deployed.** Open `<backend>?path=documents/list&query=test` in the
    browser directly — it should return JSON, not a 404 page.
 3. **Cloudflare.** A `challenge: true` error means the request reached
-   Cloudflare and was refused there; try the Worker instead of Vercel.
+   Cloudflare and was refused there — the backend works, the block is upstream.
+   Cloudflare filters datacenter IP ranges, and Vercel's are well known, so
+   this is the expected outcome for some names and regions. Deploy the Worker
+   instead: its requests originate inside Cloudflare's own network, which is a
+   genuinely different path rather than the same request with new headers.
 
 ## Local
 
