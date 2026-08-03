@@ -1,17 +1,20 @@
 /**
- * Серверний посередник до реєстру декларацій (Vercel Serverless Function).
+ * Server-side backend for the declarations registry (Vercel function).
  *
- * Навіщо: public-api.nazk.gov.ua стоїть за Cloudflare, який відповідає 403
- * на запити з браузера. Запит із сервера йде без заголовка Origin і з
- * звичайним User-Agent, тож проходить; відповідь віддається браузеру
- * з дозвільним CORS.
+ * Why it exists: public-api.nazk.gov.ua sits behind Cloudflare, which answers
+ * 403 to browser requests. A server request carries no Origin header and a
+ * plain User-Agent, so it gets through; the response is handed back to the
+ * browser with permissive CORS.
  *
- * Дозволені лише шляхи documents/list і documents/{id} та вузький перелік
- * параметрів — див. resolveUpstream(), інакше це був би відкритий проксі.
+ * Only documents/list and documents/{id} plus a narrow parameter list are
+ * allowed — see resolveUpstream(), otherwise this would be an open proxy.
  */
 
-import { looksLikeChallenge, resolveUpstream } from '../src/lib.js';
+import { looksLikeChallenge, resolveUpstream } from '../src/lib/index.js';
 
+// Message language follows the audience: misuse of the endpoint (wrong method
+// or path) is reported in English, while upstream failures are shown verbatim
+// in the Ukrainian UI and are therefore written in Ukrainian.
 const UPSTREAM_TIMEOUT_MS = 15000;
 
 const CORS = {
@@ -26,11 +29,11 @@ export default async function handler(request, response) {
     return sendJson(response, 204, null);
   }
   if (request.method !== 'GET') {
-    return sendJson(response, 405, { error: 'Дозволено лише GET.' });
+    return sendJson(response, 405, { error: 'Only GET is allowed.' });
   }
 
   const url = new URL(request.url, `https://${request.headers.host || 'localhost'}`);
-  // REGISTRY_API_BASE дозволяє перенацілити посередника без правки коду.
+  // REGISTRY_API_BASE retargets the backend without touching the code.
   const base = process.env.REGISTRY_API_BASE;
   const resolved = resolveUpstream(url.searchParams, base ? { base } : {});
   if (!resolved.ok) {

@@ -1,72 +1,144 @@
+/**
+ * Exercises both backend implementations against a fake registry: the real
+ * public-api.nazk.gov.ua is unreachable from the build environment.
+ */
+
 import assert from 'node:assert/strict';
-import { test } from 'node:test';
+import http from 'node:http';
+import { after, test } from 'node:test';
 
-import {
-  buildBackendDocumentUrl,
-  buildBackendSearchUrl,
-  looksLikeChallenge,
-  resolveUpstream,
-} from '../src/lib.js';
-import { looksLikeChallenge as workerChallenge, resolveUpstream as workerResolve } from '../worker.js';
+import handler from '../api/registry.js';
+import worker, { looksLikeChallenge as workerChallenge, resolveUpstream as workerResolve } from '../workers/registry.worker.js';
+import { looksLikeChallenge, resolveUpstream } from '../src/lib/registry.js';
 
-const params = (obj) => new URLSearchParams(obj);
+// ─── fake registry ───
 
-test('resolveUpstream пропускає дозволені шляхи', () => {
-  const list = resolveUpstream(params({ path: 'documents/list', query: 'Іваненко Іван' }));
-  assert.equal(list.ok, true);
-  const url = new URL(list.url);
-  assert.equal(url.origin + url.pathname, 'https://public-api.nazk.gov.ua/v2/documents/list');
-  assert.equal(url.searchParams.get('query'), 'Іваненко Іван');
-
-  const doc = resolveUpstream(params({ path: 'documents/82e5aea2-2935-4902-bf2b-765e7c9db079' }));
-  assert.equal(doc.ok, true);
-  assert.ok(doc.url.endsWith('/documents/82e5aea2-2935-4902-bf2b-765e7c9db079'));
-});
-
-test('resolveUpstream не дає перетворити посередника на відкритий проксі', () => {
-  const cases = [
-    { path: 'https://evil.test/steal' },
-    { path: '../../admin' },
-    { path: 'documents/../../secret' },
-    { path: 'users/list' },
-    { path: 'documents/list/../../etc/passwd' },
-    {},
-  ];
-  for (const input of cases) {
-    assert.equal(resolveUpstream(params(input)).ok, false, `мав відхилити: ${JSON.stringify(input)}`);
+let mode = 'ok';
+const upstream = http.createServer((req, res) => {
+  if (mode === 'challenge') {
+    res.writeHead(403, { 'Content-Type': 'text/html' });
+    res.end(
+      '<html> <head><title>403 Forbidden</title></head> <body><center><h1>403 Forbidden</h1></center>' +
+        "<script>window.__CF$cv$params={r:'abc'};</script></body></html>"
+    );
+    return;
   }
+  if (mode === 'garbage') {
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end('not json at all');
+    return;
+  }
+  res.writeHead(200, { 'Content-Type': 'application/json' });
+  res.end(JSON.stringify({ items: [{ id: 'x1', lastname: 'Іваненко' }], total: 1, echo: req.url }));
 });
 
-test('resolveUpstream передає лише відомі параметри', () => {
-  const resolved = resolveUpstream(
-    params({ path: 'documents/list', query: 'Іваненко', page: '2', declaration_year: '2023', evil: 'x', token: 'y' })
-  );
-  const url = new URL(resolved.url);
-  assert.equal(url.searchParams.get('page'), '2');
-  assert.equal(url.searchParams.get('declaration_year'), '2023');
-  assert.equal(url.searchParams.get('evil'), null);
-  assert.equal(url.searchParams.get('token'), null);
+await new Promise((resolve) => upstream.listen(0, '127.0.0.1', resolve));
+const BASE = `http://127.0.0.1:${upstream.address().port}/v2`;
+process.env.REGISTRY_API_BASE = BASE;
+
+after(() => upstream.close());
+
+// ─── minimal Vercel-style req/res stubs ───
+
+function makeResponse(onEnd) {
+  return {
+    headers: {},
+    statusCode: 0,
+    body: '',
+    setHeader(name, value) {
+      this.headers[name] = value;
+    },
+    status(code) {
+      this.statusCode = code;
+      return this;
+    },
+    send(payload) {
+      this.body = payload;
+      return this;
+    },
+    end() {
+      onEnd?.(this);
+      return this;
+    },
+  };
+}
+
+function callHandler(query, method = 'GET') {
+  const res = makeResponse();
+  return handler({ method, url: `/api/registry${query}`, headers: { host: 'app.test' } }, res).then(() => res);
+}
+
+const callWorker = (query) => worker.fetch(new Request(`https://worker.test/${query}`), { REGISTRY_API_BASE: BASE });
+
+// ─── tests ───
+
+test('the backend returns registry JSON with permissive CORS', async () => {
+  mode = 'ok';
+  const res = await callHandler('?path=documents/list&query=Іваненко');
+  assert.equal(res.statusCode, 200);
+  assert.equal(res.headers['Access-Control-Allow-Origin'], '*');
+
+  const body = JSON.parse(res.body);
+  assert.equal(body.total, 1);
+  assert.equal(body.items[0].lastname, 'Іваненко');
+  assert.match(decodeURIComponent(body.echo), /query=Іваненко/, 'the parameter reached the registry');
 });
 
-test('resolveUpstream відкидає порожні значення параметрів', () => {
-  const resolved = resolveUpstream(params({ path: 'documents/list', query: 'Іваненко', page: '' }));
-  assert.equal(new URL(resolved.url).searchParams.has('page'), false);
+test('a Cloudflare interstitial becomes a clear error, not raw HTML', async () => {
+  mode = 'challenge';
+  const res = await callHandler('?path=documents/list&query=Іваненко');
+  assert.equal(res.statusCode, 502);
+
+  const body = JSON.parse(res.body);
+  assert.equal(body.challenge, true);
+  assert.equal(body.upstreamStatus, 403);
+  assert.doesNotMatch(body.error, /<html/i, 'markup does not leak into the message');
 });
 
-test('looksLikeChallenge розпізнає заглушку Cloudflare', () => {
-  const cloudflare =
-    '<html> <head><title>403 Forbidden</title></head> <body> <center><h1>403 Forbidden</h1></center> ' +
-    "<script>window.__CF$cv$params={r:'a250eba08facbabc'};</script>";
-  assert.equal(looksLikeChallenge(cloudflare), true);
-  assert.equal(looksLikeChallenge('<!doctype html><html><body>щось</body></html>'), true);
-  assert.equal(looksLikeChallenge('  <html>'), true);
-  assert.equal(looksLikeChallenge('{"items":[]}'), false);
-  assert.equal(looksLikeChallenge('[]'), false);
-  assert.equal(looksLikeChallenge(''), false);
-  assert.equal(looksLikeChallenge(null), false);
+test('malformed upstream JSON does not break the backend', async () => {
+  mode = 'garbage';
+  const res = await callHandler('?path=documents/list&query=Іваненко');
+  assert.equal(res.statusCode, 502);
+  assert.match(JSON.parse(res.body).error, /JSON/);
 });
 
-test('worker.js поводиться так само, як src/lib.js', () => {
+test('a disallowed path is rejected before any network call', async () => {
+  mode = 'ok';
+  const res = await callHandler('?path=https://evil.test/steal');
+  assert.equal(res.statusCode, 400);
+  assert.match(JSON.parse(res.body).error, /not allowed/);
+});
+
+test('preflight and non-GET methods are handled', async () => {
+  const preflight = await new Promise((resolve) => {
+    const res = makeResponse(resolve);
+    handler({ method: 'OPTIONS', url: '/api/registry', headers: {} }, res);
+  });
+  assert.equal(preflight.statusCode, 204);
+  assert.equal(preflight.headers['Access-Control-Allow-Methods'], 'GET, OPTIONS');
+
+  const post = await callHandler('?path=documents/list', 'POST');
+  assert.equal(post.statusCode, 405);
+});
+
+test('the worker answers exactly like the Vercel function', async () => {
+  mode = 'ok';
+  const ok = await callWorker('?path=documents/list&query=Іваненко');
+  assert.equal(ok.status, 200);
+  assert.equal(ok.headers.get('access-control-allow-origin'), '*');
+  assert.equal((await ok.json()).total, 1);
+
+  mode = 'challenge';
+  const blocked = await callWorker('?path=documents/list&query=Іваненко');
+  assert.equal(blocked.status, 502);
+  assert.equal((await blocked.json()).challenge, true);
+
+  mode = 'ok';
+  const rejected = await callWorker('?path=../secret');
+  assert.equal(rejected.status, 400);
+});
+
+test('the worker copy of the shared helpers has not drifted', () => {
   const inputs = [
     { path: 'documents/list', query: 'Іваненко Іван', page: '3' },
     { path: 'documents/abc-123' },
@@ -76,45 +148,13 @@ test('worker.js поводиться так само, як src/lib.js', () => {
   ];
   for (const input of inputs) {
     assert.deepEqual(
-      workerResolve(params(input)),
-      resolveUpstream(params(input)),
-      `розбіжність на ${JSON.stringify(input)}`
+      workerResolve(new URLSearchParams(input)),
+      resolveUpstream(new URLSearchParams(input)),
+      `mismatch on ${JSON.stringify(input)}`
     );
   }
 
   for (const text of ['<html>', '{"a":1}', 'window.__CF$cv$params={}', '', 'Just a moment...']) {
-    assert.equal(workerChallenge(text), looksLikeChallenge(text), `розбіжність на ${JSON.stringify(text)}`);
+    assert.equal(workerChallenge(text), looksLikeChallenge(text), `mismatch on ${JSON.stringify(text)}`);
   }
-});
-
-test('buildBackendSearchUrl складає запит до посередника', () => {
-  const url = new URL(buildBackendSearchUrl('https://x.vercel.app/api/registry', 'Іваненко\nІван'));
-  assert.equal(url.pathname, '/api/registry');
-  assert.equal(url.searchParams.get('path'), 'documents/list');
-  assert.equal(url.searchParams.get('query'), 'Іваненко Іван');
-  assert.equal(url.searchParams.get('page'), null);
-
-  const second = new URL(buildBackendSearchUrl('https://x.vercel.app/api/registry/', 'Іваненко Іван', { page: 2 }));
-  assert.equal(second.pathname, '/api/registry', 'зайвий слеш прибирається');
-  assert.equal(second.searchParams.get('page'), '2');
-});
-
-test('buildBackendDocumentUrl складає запит документа', () => {
-  const url = new URL(buildBackendDocumentUrl('https://x.vercel.app/api/registry', 'abc-123'));
-  assert.equal(url.searchParams.get('path'), 'documents/abc-123');
-});
-
-test('URL посередника переживає повний обіг через resolveUpstream', () => {
-  // Те, що будує застосунок, має бути прийняте посередником.
-  const built = new URL(buildBackendSearchUrl('https://x.vercel.app/api/registry', 'Іваненко Іван', { page: 2 }));
-  const resolved = resolveUpstream(built.searchParams);
-  assert.equal(resolved.ok, true);
-  const upstream = new URL(resolved.url);
-  assert.equal(upstream.pathname, '/v2/documents/list');
-  assert.equal(upstream.searchParams.get('query'), 'Іваненко Іван');
-  assert.equal(upstream.searchParams.get('page'), '2');
-
-  const doc = resolveUpstream(new URL(buildBackendDocumentUrl('https://x.vercel.app/api/registry', 'uuid-1')).searchParams);
-  assert.equal(doc.ok, true);
-  assert.ok(doc.url.endsWith('/v2/documents/uuid-1'));
 });

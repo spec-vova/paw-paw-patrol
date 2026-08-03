@@ -1,10 +1,10 @@
 /**
- * Той самий посередник, але у вигляді Cloudflare Worker.
+ * The same backend, packaged as a Cloudflare Worker.
  *
- * Файл навмисно самодостатній: його можна вставити в редактор на
- * dash.cloudflare.com прямо з телефона, без збірки й репозиторію.
- * Логіка дублює resolveUpstream()/looksLikeChallenge() із src/lib.js —
- * тест tests/worker.test.mjs звіряє обидві реалізації, щоб вони не розʼїхались.
+ * This file is deliberately self-contained: it can be pasted into the editor
+ * on dash.cloudflare.com straight from a phone, with no build and no repo.
+ * It duplicates resolveUpstream()/looksLikeChallenge() from src/lib/registry.js;
+ * tests/backend.test.mjs compares both implementations so they cannot drift.
  */
 
 const API_BASE = 'https://public-api.nazk.gov.ua/v2';
@@ -23,8 +23,8 @@ export function resolveUpstream(searchParams, options = {}) {
   const base = options.base || API_BASE;
   const path = (searchParams.get('path') || '').trim();
 
-  if (!path) return { ok: false, error: 'Не вказано параметр path.' };
-  if (!SAFE_PATH.test(path)) return { ok: false, error: `Недозволений шлях: ${path}` };
+  if (!path) return { ok: false, error: 'Missing "path" parameter.' };
+  if (!SAFE_PATH.test(path)) return { ok: false, error: `Path is not allowed: ${path}` };
 
   const forwarded = new URLSearchParams();
   for (const name of FORWARDED_PARAMS) {
@@ -55,9 +55,9 @@ function json(status, body) {
 export default {
   async fetch(request, env = {}) {
     if (request.method === 'OPTIONS') return json(204, null);
-    if (request.method !== 'GET') return json(405, { error: 'Дозволено лише GET.' });
+    if (request.method !== 'GET') return json(405, { error: 'Only GET is allowed.' });
 
-    // REGISTRY_API_BASE дозволяє перенацілити посередника без правки коду.
+    // REGISTRY_API_BASE retargets the backend without touching the code.
     const base = env.REGISTRY_API_BASE;
     const resolved = resolveUpstream(new URL(request.url).searchParams, base ? { base } : {});
     if (!resolved.ok) return json(400, { error: resolved.error });

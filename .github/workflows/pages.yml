@@ -2,8 +2,8 @@ name: Deploy to GitHub Pages
 
 on:
   push:
-    # Репозиторій створювався порожнім, тому типовою стала гілка claude/**.
-    # Лишаємо і main — на випадок перейменування чи злиття.
+    # The repo was created empty, so the default branch is claude/**.
+    # main is kept too, in case the branch is renamed or merged.
     branches: [main, 'claude/**']
   workflow_dispatch:
 
@@ -35,7 +35,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/configure-pages@v5
-      # Сайт статичний — публікуємо репозиторій як є.
+      # The site is static — publish the repository as is.
       - uses: actions/upload-pages-artifact@v3
         with:
           path: .

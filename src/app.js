@@ -1,8 +1,10 @@
 /**
- * Звʼязує UI з реєстром декларацій.
+ * Wires the UI to the declarations registry.
  *
- * Уся чиста логіка (нормалізація ПІБ, побудова URL, розбір відповідей)
- * винесена в src/lib.js і покрита тестами; тут — лише DOM, мережа та стан.
+ * All pure logic (name normalisation, URL building, response parsing) lives in
+ * src/lib/ and is covered by tests; this file is DOM, network and state only.
+ *
+ * User-facing strings stay in Ukrainian — that is the language of the UI.
  */
 
 import {
@@ -24,7 +26,7 @@ import {
   summarizeDocument,
   titleCasePib,
   validatePib,
-} from './src/lib.js';
+} from './lib/index.js';
 
 const APP_VERSION = '1.0.0';
 const REQUEST_TIMEOUT_MS = 20000;
@@ -92,8 +94,8 @@ const els = {
 
 const DEFAULT_SETTINGS = {
   apiBase: API_BASE,
-  // Адреса власного посередника (api/registry.js або worker.js).
-  // Порожня — застосунок ходить до реєстру напряму.
+  // Own backend address (api/registry.js or workers/registry.worker.js).
+  // Empty means requests go to the registry directly.
   backendBase: '',
   proxyEnabled: false,
   proxyTemplate: 'https://corsproxy.io/?{url}',
@@ -110,7 +112,7 @@ const state = {
   lastRoute: null,
 };
 
-// ─────────────────────────── Сховище ────────────────────────────
+// ──────────────────────────── storage ──────────────────────────
 
 function readStore(key, fallback) {
   try {
@@ -125,13 +127,13 @@ function writeStore(key, value) {
   try {
     localStorage.setItem(key, JSON.stringify(value));
   } catch {
-    /* приватний режим або переповнене сховище — не критично */
+    /* private mode or full storage — not critical */
   }
 }
 
-// ──────────────────────────── Тема ──────────────────────────────
+// ───────────────────────────── theme ───────────────────────────
 
-/** Перемикає оформлення: 'plain' — звичайне, 'paw' — щенячий патруль. */
+/** Switches the skin: 'plain' is the default one, 'paw' is the playful one. */
 function applyTheme(theme, { animate = false } = {}) {
   const paw = theme === 'paw';
   document.documentElement.dataset.theme = paw ? 'paw' : 'plain';
@@ -149,7 +151,7 @@ function applyTheme(theme, { animate = false } = {}) {
   writeStore(STORAGE.theme, theme);
 }
 
-// ─────────────────────────── Історія ────────────────────────────
+// ─────────────────────────── recent list ───────────────────────
 
 function getRecent() {
   const list = readStore(STORAGE.recent, []);
@@ -182,14 +184,14 @@ function renderRecent() {
   );
 }
 
-// ──────────────────────── Введення ПІБ ──────────────────────────
+// ───────────────────────── name input ──────────────────────────
 
 function onInput() {
   const raw = els.pib.value;
   const normalized = normalizePib(raw);
   els.clearBtn.hidden = raw.length === 0;
 
-  // Показуємо, як багаторядкове введення склеїлось в один рядок.
+  // Show how multi-line input collapsed into a single line.
   const multiline = /\n/.test(raw.trim());
   if (normalized && multiline) {
     els.preview.hidden = false;
@@ -214,7 +216,7 @@ function boldNode(text) {
   return strong;
 }
 
-// ──────────────────────────── Мережа ────────────────────────────
+// ──────────────────────────── network ──────────────────────────
 
 class ApiError extends Error {
   constructor(message, { kind, url, status, body } = {}) {
@@ -238,8 +240,8 @@ async function fetchOnce(url, timeoutMs = REQUEST_TIMEOUT_MS) {
     if (error.name === 'AbortError') {
       throw new ApiError('Сервер не відповів вчасно.', { kind: 'timeout', url });
     }
-    // fetch кидає TypeError і на CORS, і на відсутність мережі —
-    // розрізнити їх зі сторінки неможливо, тому пояснюємо обидва випадки.
+    // fetch throws TypeError both on CORS and on a dead network, and the page
+    // cannot tell them apart — so the message covers both cases.
     throw new ApiError('Не вдалося зʼєднатися.', { kind: 'network', url });
   }
   clearTimeout(timer);
@@ -247,7 +249,7 @@ async function fetchOnce(url, timeoutMs = REQUEST_TIMEOUT_MS) {
   const text = await response.text();
 
   if (!response.ok) {
-    // Власний посередник повертає причину машинно-читаним JSON.
+    // The own backend reports the reason as machine-readable JSON.
     const parsed = safeParse(text);
     if (parsed?.error) {
       throw new ApiError(parsed.error, {
@@ -284,9 +286,9 @@ function safeParse(text) {
 }
 
 /**
- * Маршрути запиту в порядку спроб: власний бекенд → напряму → проксі.
- * Реєстр за Cloudflare, тож напряму з браузера часто прилітає 403 —
- * перший робочий маршрут запамʼятовується і далі йде першим.
+ * Request routes in attempt order: own backend → direct → CORS proxy.
+ * The registry sits behind Cloudflare, so a direct browser request often
+ * returns 403; the first route that works is remembered and tried first.
  */
 function buildRoutes(kind, params) {
   const { backendBase, apiBase, proxyEnabled, proxyTemplate } = state.settings;
@@ -313,12 +315,12 @@ function buildRoutes(kind, params) {
     routes.push({ id: 'proxy', label: 'через проксі', url: applyProxy(directUrl, proxyTemplate) });
   }
 
-  // Маршрут, який спрацював минулого разу, пробуємо першим.
+  // Try the route that worked last time before the others.
   routes.sort((a, b) => (a.id === state.lastRoute ? -1 : b.id === state.lastRoute ? 1 : 0));
   return routes;
 }
 
-/** Пробує маршрути по черзі; кидає помилку останнього, якщо не зміг жоден. */
+/** Tries routes one by one; throws the last error if none succeeded. */
 async function fetchViaRoutes(routes) {
   const failures = [];
   for (const route of routes) {
@@ -336,7 +338,7 @@ async function fetchViaRoutes(routes) {
   throw last;
 }
 
-// ──────────────────────────── Пошук ─────────────────────────────
+// ──────────────────────────── search ───────────────────────────
 
 function startSearch() {
   const check = validatePib(els.pib.value);
@@ -375,7 +377,7 @@ async function loadPage() {
     els.resultsList.append(...summaries.map(renderCard));
     els.resultsCount.textContent = total !== null ? `${total} всього` : `${els.resultsList.childElementCount} показано`;
 
-    // Ховаємо «Показати ще», коли сторінка порожня або всі документи вже на екрані.
+    // Hide "show more" once a page comes back empty or everything is shown.
     const shown = els.resultsList.childElementCount;
     state.exhausted = summaries.length === 0 || (total !== null && shown >= total);
     els.moreBtn.hidden = state.exhausted;
@@ -430,7 +432,7 @@ function tagNode(text, extra) {
   return span;
 }
 
-// ─────────────────────── Стани та повідомлення ──────────────────
+// ────────────────────── status messages ────────────────────────
 
 function showStatus(kind, lines) {
   els.status.hidden = false;
@@ -443,7 +445,7 @@ function showStatus(kind, lines) {
       return p;
     })
   );
-  // Помилка може опинитись нижче краю екрана — підводимо її до очей.
+  // The message may sit below the fold — bring it into view.
   if (kind !== 'info') {
     els.status.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
   }
@@ -467,7 +469,7 @@ function showEmptyResult(payload) {
     googleLink,
   ];
 
-  // Якщо відповідь непорожня, але розпізнати список не вдалося — покажемо сире тіло.
+  // Non-empty payload we failed to read as a list: show it raw.
   if (payload && typeof payload === 'object' && Object.keys(payload).length) {
     const details = document.createElement('details');
     const summary = document.createElement('summary');
@@ -525,7 +527,7 @@ function showError(error) {
     lines.push('Реєстр обмежив частоту запитів — зачекайте хвилину й спробуйте ще раз.');
   }
 
-  // Перелік спроб допомагає зрозуміти, який маршрут ще варто полагодити.
+  // The attempt list shows which route is still worth fixing.
   if (error.attempts?.length > 1) {
     const details = document.createElement('details');
     const summary = document.createElement('summary');
@@ -569,7 +571,7 @@ function toast(message) {
   }, 2600);
 }
 
-// ───────────────────────── Документ ─────────────────────────────
+// ─────────────────────────── document ──────────────────────────
 
 async function openDocument(summary) {
   state.currentSummary = summary;
@@ -582,7 +584,7 @@ async function openDocument(summary) {
   showTab('json');
   if (!els.docDialog.open) els.docDialog.showModal();
 
-  // Якщо ідентифікатора немає — показуємо те, що прийшло у списку.
+  // Without an id there is nothing to fetch — show what the list gave us.
   if (!summary.id) {
     state.currentDoc = summary.raw;
     renderDocument(summary.raw);
@@ -595,7 +597,7 @@ async function openDocument(summary) {
     state.currentDoc = doc;
     renderDocument(doc);
   } catch (error) {
-    // Повний документ не дістали — не лишаємо панель порожньою.
+    // The full document failed to load — do not leave the sheet blank.
     state.currentDoc = summary.raw;
     renderDocument(summary.raw);
     els.docSubtitle.textContent = `${error.message} Показано дані зі списку.`;
@@ -683,7 +685,7 @@ function renderFields(sections) {
   els.fieldsView.replaceChildren(...nodes);
 }
 
-/** Розфарбовує JSON. Спершу екрануємо HTML, потім загортаємо токени. */
+/** Highlights JSON: escape HTML first, then wrap tokens in spans. */
 function highlightJson(json) {
   const escaped = json
     .replace(/&/g, '&amp;')
@@ -718,7 +720,7 @@ function suggestedFileName() {
   return `${base}${year}.json`;
 }
 
-// ─────────────────────── Налаштування ───────────────────────────
+// ─────────────────────────── settings ──────────────────────────
 
 function syncSettingsForm() {
   els.apiBase.value = state.settings.apiBase;
@@ -728,9 +730,9 @@ function syncSettingsForm() {
 }
 
 /**
- * Пробує кожен маршрут окремо і показує, який працює.
- * Перевірити зі свого телефона — єдиний надійний спосіб дізнатись,
- * що саме пропускає мережа й Cloudflare.
+ * Probes every route separately and reports which one works.
+ * Running this from the actual phone is the only reliable way to learn what
+ * the local network and Cloudflare let through.
  */
 async function runDiagnostics() {
   saveSettingsValues();
@@ -777,7 +779,7 @@ function saveSettingsValues() {
     proxyEnabled: els.proxyEnabled.checked,
     proxyTemplate: els.proxyTemplate.value.trim() || DEFAULT_SETTINGS.proxyTemplate,
   };
-  // Маршрути змінились — забуваємо, який працював раніше.
+  // Routes changed — forget which one used to work.
   state.lastRoute = null;
   writeStore(STORAGE.settings, state.settings);
 }
@@ -788,7 +790,7 @@ function saveSettings() {
   toast('Збережено');
 }
 
-// ──────────────────────────── Події ─────────────────────────────
+// ──────────────────────────── events ───────────────────────────
 
 els.form.addEventListener('submit', (event) => {
   event.preventDefault();
@@ -850,7 +852,7 @@ els.shareBtn.addEventListener('click', async () => {
     try {
       await navigator.share(payload);
     } catch {
-      /* користувач скасував — мовчимо */
+      /* user cancelled — stay quiet */
     }
     return;
   }
@@ -872,14 +874,14 @@ els.downloadBtn.addEventListener('click', () => {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 });
 
-// Клік по підкладці закриває панель.
+// Clicking the backdrop closes the sheet.
 for (const dialog of [els.docDialog, els.settingsDialog]) {
   dialog.addEventListener('click', (event) => {
     if (event.target === dialog) dialog.close();
   });
 }
 
-// ─────────────────────────── Старт ──────────────────────────────
+// ───────────────────────────── start ───────────────────────────
 
 function init() {
   state.settings = { ...DEFAULT_SETTINGS, ...readStore(STORAGE.settings, {}) };
@@ -887,7 +889,7 @@ function init() {
   renderRecent();
   onInput();
 
-  // Дозволяє відкрити застосунок одразу з ПІБ: ?pib=Іваненко Іван
+  // Allows opening the app with a name prefilled: ?pib=Іваненко Іван
   const fromUrl = new URLSearchParams(location.search).get('pib');
   if (fromUrl) {
     els.pib.value = fromUrl;
@@ -898,7 +900,7 @@ function init() {
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
       navigator.serviceWorker.register('./sw.js').catch(() => {
-        /* офлайн-кеш необовʼязковий */
+        /* the offline cache is optional */
       });
     });
   }

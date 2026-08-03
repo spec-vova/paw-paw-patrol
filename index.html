@@ -14,7 +14,7 @@
     <link rel="manifest" href="./manifest.webmanifest" />
     <link rel="icon" href="./icons/favicon-32.png" sizes="32x32" />
     <link rel="apple-touch-icon" href="./icons/apple-touch-icon.png" />
-    <link rel="stylesheet" href="./styles.css" />
+    <link rel="stylesheet" href="./src/styles.css" />
   </head>
   <body>
     <div class="app">
@@ -33,7 +33,7 @@
       </header>
 
       <main class="content">
-        <!-- Крок 1: одне поле для ПІБ. -->
+        <!-- Step 1: a single field for the full name. -->
         <section class="search-card" aria-labelledby="searchLabel">
           <label id="searchLabel" class="field-label" for="pib">Прізвище, імʼя та по батькові</label>
           <form id="searchForm" autocomplete="off">
@@ -83,7 +83,7 @@
           </div>
         </section>
 
-        <!-- Окрема кнопка: перемикає весь інтерфейс у «щенячий» режим. -->
+        <!-- Dedicated button: switches the whole UI into paw mode. -->
         <button id="pawBtn" class="paw-btn" type="button" aria-pressed="false">
           <span class="paw-btn__paw" aria-hidden="true">
             <svg viewBox="0 0 24 24" focusable="false">
@@ -99,7 +99,7 @@
           </span>
         </button>
 
-        <!-- Історія запитів. -->
+        <!-- Recent searches. -->
         <section id="recentSection" class="recent" hidden>
           <div class="recent__head">
             <h2>Нещодавні</h2>
@@ -108,7 +108,7 @@
           <div id="recentList" class="chips"></div>
         </section>
 
-        <!-- Стани видачі. -->
+        <!-- Result states. -->
         <section id="status" class="status" hidden aria-live="polite"></section>
 
         <section id="results" class="results" hidden aria-live="polite">
@@ -127,7 +127,7 @@
       </main>
     </div>
 
-    <!-- Повний документ: усі поля + сирий JSON. -->
+    <!-- Full document: all fields plus raw JSON. -->
     <dialog id="docDialog" class="sheet" aria-labelledby="docTitle">
       <div class="sheet__head">
         <div>
@@ -167,7 +167,7 @@
       </div>
     </dialog>
 
-    <!-- Налаштування: базовий URL API та обхід CORS. -->
+    <!-- Settings: backend address, API base and CORS workaround. -->
     <dialog id="settingsDialog" class="sheet" aria-labelledby="settingsTitle">
       <div class="sheet__head">
         <h2 id="settingsTitle">Налаштування</h2>
@@ -222,6 +222,6 @@
 
     <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
 
-    <script type="module" src="./app.js"></script>
+    <script type="module" src="./src/app.js"></script>
   </body>
 </html>

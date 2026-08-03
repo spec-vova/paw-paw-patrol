@@ -2,12 +2,13 @@
   "name": "paw-paw-patrol",
   "version": "1.0.0",
   "private": true,
-  "description": "PWA для пошуку декларацій державних службовців за ПІБ у Єдиному державному реєстрі декларацій.",
+  "description": "PWA that looks up Ukrainian public-official declarations by full name.",
   "type": "module",
   "scripts": {
     "test": "node --test 'tests/*.test.mjs'",
     "start": "npx --yes http-server -p 8099 -c-1 .",
-    "icons": "python3 tools/make_icons.py"
+    "icons": "python3 tools/make_icons.py",
+    "test:e2e": "node tests/e2e/browser.mjs"
   },
   "license": "MIT"
 }

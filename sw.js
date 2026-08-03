@@ -1,7 +1,7 @@
 /**
- * Service worker: кешує оболонку застосунку, щоб іконка з домашнього екрана
- * відкривалась миттєво й без мережі. Запити до реєстру не кешуються —
- * дані декларацій завжди беруться свіжими.
+ * Service worker: caches the app shell so the home-screen icon opens instantly
+ * and offline. Registry requests are never cached — declaration data is always
+ * fetched fresh.
  */
 
 const CACHE = 'pp-shell-v1';
@@ -9,9 +9,12 @@ const CACHE = 'pp-shell-v1';
 const SHELL = [
   './',
   './index.html',
-  './styles.css',
-  './app.js',
-  './src/lib.js',
+  './src/styles.css',
+  './src/app.js',
+  './src/lib/index.js',
+  './src/lib/pib.js',
+  './src/lib/registry.js',
+  './src/lib/declaration.js',
   './manifest.webmanifest',
   './icons/icon-192.png',
   './icons/icon-512.png',
@@ -23,7 +26,7 @@ self.addEventListener('install', (event) => {
   event.waitUntil(
     caches
       .open(CACHE)
-      // addAll падає цілком, якщо хоч один файл недоступний, — кладемо поштучно.
+      // addAll fails as a whole if any file is missing — cache them one by one.
       .then((cache) => Promise.all(SHELL.map((url) => cache.add(url).catch(() => {}))))
       .then(() => self.skipWaiting())
   );
@@ -43,7 +46,7 @@ self.addEventListener('fetch', (event) => {
   if (request.method !== 'GET') return;
 
   const url = new URL(request.url);
-  // Усе, що не належить оболонці (зокрема API реєстру), йде повз кеш.
+  // Anything outside the shell (the registry API in particular) bypasses the cache.
   if (url.origin !== self.location.origin) return;
 
   event.respondWith(
@@ -59,7 +62,7 @@ self.addEventListener('fetch', (event) => {
         })
         .catch(() => null);
 
-      // Спершу віддаємо кеш (швидко), у фоні оновлюємо його з мережі.
+      // Serve from cache first, refresh it from the network in the background.
       return cached || (await network) || new Response('Офлайн', { status: 503, statusText: 'Offline' });
     })()
   );

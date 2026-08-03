@@ -1,122 +1,55 @@
-# Декларація за ПІБ
+# paw-paw-patrol
 
-PWA для телефона: вводишь ФИО одной строкой (или с переносами), жмёшь кнопку — приложение ищет
-декларации в **Едином государственном реестре деклараций** (НАЗК) и отдаёт документ целиком:
-сырой JSON и разложенные по разделам поля. Отдельной кнопкой интерфейс переключается в
-«щенячий» режим.
+A phone-sized PWA that looks up Ukrainian public-official declarations by full
+name. Type the name on one line or across three, tap the button, and the app
+searches the [Unified State Register of Declarations](https://public.nazk.gov.ua)
+and shows the whole document — raw JSON plus every field grouped by section.
+A separate button switches the interface into a playful "paw" skin.
 
-Ставится на домашний экран Pixel как обычное приложение — без сборки APK и сайдлоада.
+Installs on the home screen from Chrome — no APK, no sideloading.
+The interface is in Ukrainian; the codebase is in English.
 
-## Что умеет
+## Install on a phone
 
-- **Одно поле ввода.** ФИО можно писать в строку или в три строки — переносы склеиваются
-  автоматически, под полем показывается итоговый запрос.
-- **Поиск по реестру.** `GET /v2/documents/list?query=<ПІБ>` → карточки найденных документов
-  (ФИО, должность, орган, год, тип декларации).
-- **Все поля документа.** Тап по карточке → `GET /v2/documents/{id}`:
-  - вкладка **JSON** — полный ответ с подсветкой, кнопки «Копіювати», «Поділитися», «Зберегти .json»;
-  - вкладка **Усі поля** — те же данные, разложенные по разделам декларации (нерухомість, доходи,
-    транспорт и т.д.) с человеческими подписями; рядом с подписью показан исходный ключ API.
-- **Google как запасной вариант.** К введённому ФИО добавляется слово «декларація» — чип открывает
-  обычный поиск Google, второй чип ищет тем же запросом внутри `public.nazk.gov.ua`. Эти кнопки
-  доступны всегда и особенно — когда реестр ничего не нашёл или не ответил.
-- **Щенячий режим.** Кнопка «Щенячий патруль» перекрашивает весь интерфейс: светлая палитра,
-  круглые формы, отпечатки лап, кнопка «Гав! Шукати». Выбор запоминается между запусками.
-  Оформление оригинальное — персонажи и логотипы франшизы не используются.
-- **История запросов** и **офлайн-оболочка** (service worker) — всё хранится только на устройстве.
+1. Deploy (see [docs/deploy.md](docs/deploy.md)) — Vercel is recommended,
+   because the app needs its own backend to reach the registry.
+2. Open the deployed URL in Chrome.
+3. Menu (⋮) → **Add to Home screen**.
 
-## Установка на Pixel 9 Pro
-
-1. Включи GitHub Pages: **Settings → Pages → Source: GitHub Actions**. Workflow
-   `.github/workflows/pages.yml` прогоняет тесты и публикует сайт при пуше в `main`.
-2. Открой полученный адрес (`https://<owner>.github.io/paw-paw-patrol/`) в Chrome на телефоне.
-3. Меню (⋮) → **Добавить на главный экран** → **Установить**.
-4. На домашнем экране появится иконка: тап → поле ввода → результат.
-
-Ссылку можно открывать сразу с запросом: `?pib=Іваненко Іван Іванович`.
-
-## Локальный запуск
+## Develop
 
 ```bash
-npm start          # http://127.0.0.1:8099/index.html
-npm test           # 39 тестов
-npm run icons      # перегенерировать иконки (нужен Python + Pillow)
+npm start    # serve at http://127.0.0.1:8099/index.html
+npm test     # 38 tests, no dependencies
+npm run test:e2e  # 16 browser scenarios (needs Playwright + `npm start`)
+npm run icons  # regenerate PWA icons (needs Python + Pillow)
 ```
 
-## Структура
+## Layout
 
-| Файл | Назначение |
-| --- | --- |
-| `index.html` | разметка: поле ввода, кнопка режима, панели документа и настроек |
-| `styles.css` | обычная тема (тёмная/светлая) и `[data-theme='paw']` — щенячий режим |
-| `app.js` | DOM, сеть, состояние |
-| `src/lib.js` | чистая логика: нормализация ПІБ, URL, разбор ответов, разбор полей |
-| `api/registry.js` | серверный посредник к реестру (Vercel) — обход блокировки Cloudflare |
-| `worker.js` | тот же посредник для Cloudflare Workers, самодостаточный файл |
-| `tests/` | 39 тестов: логика, посредник против поддельного реестра, сверка обеих реализаций |
-| `sw.js` | service worker: кеширует оболочку, запросы к реестру не кеширует |
-| `tools/make_icons.py` | генератор иконок PWA |
+```
+index.html                  app shell
+sw.js                       service worker (caches the shell, never the data)
+manifest.webmanifest        PWA manifest
+src/app.js                  DOM, network, state
+src/styles.css              default theme and the paw skin
+src/lib/pib.js              name normalisation, Google query
+src/lib/registry.js         endpoints, routing, SSRF guard
+src/lib/declaration.js      response parsing, document flattening
+api/registry.js             backend for Vercel
+workers/registry.worker.js  the same backend for Cloudflare Workers
+tests/                      node --test suites
+tests/e2e/browser.mjs       browser walkthrough (needs Playwright)
+docs/                       API reference and deployment guide
+tools/make_icons.py         icon generator
+```
 
-## Про API реестра
+## Docs
 
-Базовый адрес — `https://public-api.nazk.gov.ua/v2`, меняется в настройках приложения.
-Используются два эндпоинта: `documents/list?query=…` и `documents/{id}`.
+- [docs/api.md](docs/api.md) — registry endpoints, the Cloudflare problem, backend contract
+- [docs/deploy.md](docs/deploy.md) — Vercel, Cloudflare Workers, GitHub Pages
 
-Точная форма ответа реестра между версиями отличается, поэтому разбор написан устойчиво:
-список ищется в `items` / `data` / `results`, поля карточки собираются из нескольких вероятных
-ключей, а вкладка **Усі поля** разворачивает любую структуру рекурсивно. Что бы ни вернул реестр,
-вкладка **JSON** покажет ответ целиком — данные не теряются, даже если словарь подписей
-чего-то не знает.
+## Data
 
-Названия разделов (`step_1` … `step_16`) и подписи полей — best-effort словарь: он покрывает
-распространённые ключи, а незнакомые показываются как есть.
-
-### Cloudflare и почему нужен свой бекенд
-
-Реестр стоит за Cloudflare, и на прямой запрос из браузера тот отвечает `403 Forbidden`
-(nginx-страница со скриптом `window.__CF$cv$params`) — до самого API запрос не доходит.
-Это не CORS и не ошибка в коде: Cloudflare отсекает кросс-доменный `fetch` с чужим `Origin`.
-
-Лечится посредником, который ходит к API с сервера — без `Origin`, с обычным User-Agent — и
-возвращает браузеру JSON с CORS. В репозитории он есть в двух видах, код одинаковый:
-
-| Файл | Куда |
-| --- | --- |
-| `api/registry.js` | Vercel Serverless Function |
-| `worker.js` | Cloudflare Workers (самодостаточный — можно вставить в редактор прямо с телефона) |
-
-**Вариант 1 — Vercel (рекомендую: там же будет жить и сам сайт).**
-
-1. vercel.com → Add New → Project → импортировать `spec-vova/paw-paw-patrol`.
-2. Настройки не трогать (`vercel.json` уже описывает статику + функцию), Deploy.
-3. Приложение открывать по адресу Vercel — тогда бекенд свой же, поле в настройках можно оставить
-   пустым, если вписать `/api/registry`; при работе с GitHub Pages вписать полный адрес
-   `https://<проект>.vercel.app/api/registry`.
-
-**Вариант 2 — Cloudflare Worker.**
-
-1. dash.cloudflare.com → Workers & Pages → Create → Worker.
-2. Заменить содержимое редактора на `worker.js`, Deploy.
-3. Адрес вида `https://<имя>.<аккаунт>.workers.dev` вписать в настройках приложения.
-
-Посредник намеренно узкий: пропускает только `documents/list` и `documents/{id}` и параметры
-`query`, `page`, `declaration_year`, `user_declarant_id` — иначе он стал бы открытым прокси к
-любому адресу (SSRF). Это покрыто тестами. Целевой хост меняется переменной `REGISTRY_API_BASE`.
-
-### Порядок запросов и диагностика
-
-Приложение пробует маршруты по очереди: **свой бекенд → напрямую → CORS-прокси** (последний
-по умолчанию выключен; включённый шлёт запрос через сторонний сервис, и тот видит, кого ищут).
-Сработавший маршрут запоминается и в следующий раз идёт первым.
-
-В настройках есть кнопка **«Перевірити зʼєднання»**: она дёргает каждый маршрут отдельно и
-показывает, какой живой. Это единственный надёжный способ выяснить, что пропускает конкретно
-твоя сеть, — из окружения сборки внешние хосты закрыты, поэтому связка проверялась на
-поддельном реестре (включая ответ Cloudflare с 403), а не на живом API.
-
-Если ни один маршрут не работает, кнопка Google остаётся всегда.
-
-## Данные
-
-Все сведения — из открытого API НАЗК; это публичные документы. Приложение не имеет своего
-сервера: история запросов и настройки лежат в `localStorage` телефона.
+Everything comes from the open NAZK API; these are public records. There is no
+server of ours: search history and settings live in the phone's `localStorage`.
