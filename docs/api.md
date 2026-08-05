@@ -51,9 +51,18 @@ browser gets `403 Forbidden` — an nginx page carrying a
 and not a bug in the client: Cloudflare drops the request because of the
 foreign `Origin` header.
 
-The fix is a server-side backend. A server request has no `Origin` and a plain
-User-Agent, so it passes; the response is returned to the browser with
-permissive CORS.
+The fix is a server-side backend that presents itself as a browser: the
+`browser` header profile (Chrome User-Agent, `Referer`, `Sec-Fetch-*`) is what
+made the registry answer. A plain self-identifying client is refused.
+
+Where the backend runs matters as much as its headers. Measured against this
+registry:
+
+| Backend | Result |
+| --- | --- |
+| Vercel function | works |
+| Cloudflare Worker | `challenge: true` — Cloudflare refuses subrequests from its own Workers to origins it fronts |
+| Browser, directly | `403` — foreign `Origin` |
 
 ## Own backend contract
 

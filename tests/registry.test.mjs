@@ -7,7 +7,10 @@ import {
   buildBackendSearchUrl,
   buildDocumentUrl,
   buildSearchUrl,
+  DEFAULT_PROXY_TEMPLATE,
+  isWorkersHost,
   looksLikeChallenge,
+  migrateProxyTemplate,
   normalizeBackendBase,
   resolveUpstream,
 } from '../src/lib/registry.js';
@@ -148,6 +151,28 @@ test('a normalized same-origin path still builds a usable request', () => {
   const resolved = resolveUpstream(new URL(url, 'https://app.test').searchParams);
   assert.equal(resolved.ok, true);
   assert.ok(resolved.url.includes('/documents/list'));
+});
+
+test('a retired proxy template is replaced instead of failing forever', () => {
+  // corsproxy.io answers "Free usage is limited to localhost" without a key,
+  // and a stored setting would otherwise keep showing that error for good.
+  assert.equal(migrateProxyTemplate('https://corsproxy.io/?{url}'), DEFAULT_PROXY_TEMPLATE);
+  assert.equal(migrateProxyTemplate(''), DEFAULT_PROXY_TEMPLATE);
+  assert.equal(migrateProxyTemplate(null), DEFAULT_PROXY_TEMPLATE);
+
+  const custom = 'https://my-proxy.test/?{url}';
+  assert.equal(migrateProxyTemplate(custom), custom, 'a deliberate choice is left alone');
+});
+
+test('a Cloudflare Workers backend is recognised', () => {
+  // Cloudflare refuses subrequests from its own Workers to origins it fronts,
+  // so the advice for this host differs from any other backend.
+  assert.equal(isWorkersHost('https://5be059f1-paw-paw-patrol.lazarchuk-v-u.workers.dev'), true);
+  assert.equal(isWorkersHost('https://project.vercel.app/api/registry'), false);
+  assert.equal(isWorkersHost('/api/registry'), false);
+  assert.equal(isWorkersHost(''), false);
+  assert.equal(isWorkersHost(null), false);
+  assert.equal(isWorkersHost('https://workers.dev.evil.test'), false, 'suffix match, not substring');
 });
 
 test('looksLikeChallenge detects the Cloudflare interstitial', () => {

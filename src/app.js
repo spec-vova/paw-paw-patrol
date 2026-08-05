@@ -20,7 +20,10 @@ import {
   countFields,
   extractList,
   flattenDocument,
+  DEFAULT_PROXY_TEMPLATE,
+  isWorkersHost,
   looksLikeChallenge,
+  migrateProxyTemplate,
   normalizeBackendBase,
   normalizePib,
   REGISTRY_HOST,
@@ -100,7 +103,7 @@ const DEFAULT_SETTINGS = {
   backendBase: '',
   proxyEnabled: false,
   // corsproxy.io now requires an API key outside localhost, so it is a poor default.
-  proxyTemplate: 'https://api.allorigins.win/raw?url={url}',
+  proxyTemplate: DEFAULT_PROXY_TEMPLATE,
 };
 
 const state = {
@@ -506,8 +509,12 @@ function showError(error) {
       // server too, so pointing at «deploy a backend» would be wrong advice.
       lines.push(
         'Посередник працює і дійшов до реєстру, але Cloudflare відхилив і серверний запит.',
-        `Спроби посередника: ${(error.tried || []).map((t) => `${t.profile} → ${t.status}`).join(', ') || '—'}.`,
-        'Наступний крок — розгорнути посередника у Cloudflare Workers: запит піде зсередини мережі Cloudflare. Інструкція в docs/deploy.md.'
+        `Спроби посередника: ${(error.tried || []).map((t) => `${t.profile} → ${t.status}`).join(', ') || '—'}.`
+      );
+      lines.push(
+        isWorkersHost(state.settings.backendBase)
+          ? 'Посередник працює на Cloudflare Workers, а Cloudflare відхиляє запити власних воркерів до сайтів під своїм захистом. Переключіть бекенд на Vercel — звідти реєстр відповідає.'
+          : 'Спробуйте інший майданчик для посередника — інструкція в docs/deploy.md.'
       );
     } else {
       lines.push(
@@ -934,6 +941,9 @@ function init() {
   state.settings.backendBase = normalizeBackendBase(state.settings.backendBase, {
     pageProtocol: location.protocol,
   }).value;
+  // A stored proxy may point at a service that has since closed its free tier.
+  state.settings.proxyTemplate = migrateProxyTemplate(state.settings.proxyTemplate);
+  writeStore(STORAGE.settings, state.settings);
   applyTheme(readStore(STORAGE.theme, 'plain'));
   renderRecent();
   onInput();

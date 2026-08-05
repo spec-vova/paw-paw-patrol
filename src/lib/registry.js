@@ -181,6 +181,36 @@ export const UPSTREAM_HEADER_PROFILES = [
   },
 ];
 
+/**
+ * Proxy templates that are known to be dead, so a stored setting can be
+ * migrated instead of failing forever with someone else's error message.
+ */
+export const RETIRED_PROXY_TEMPLATES = [/corsproxy\.io/i];
+
+/** Default template, also used to replace a retired one. */
+export const DEFAULT_PROXY_TEMPLATE = 'https://api.allorigins.win/raw?url={url}';
+
+/** Swaps a retired proxy template for the current default. */
+export function migrateProxyTemplate(template) {
+  const value = String(template ?? '').trim();
+  if (!value) return DEFAULT_PROXY_TEMPLATE;
+  return RETIRED_PROXY_TEMPLATES.some((pattern) => pattern.test(value)) ? DEFAULT_PROXY_TEMPLATE : value;
+}
+
+/**
+ * Whether a backend runs on Cloudflare Workers.
+ *
+ * Matters for diagnosis: Cloudflare refuses subrequests from its own Workers to
+ * origins it fronts, so a Worker backend is blocked where a plain server is not.
+ */
+export function isWorkersHost(url) {
+  try {
+    return /\.workers\.dev$/i.test(new URL(String(url), 'https://x.invalid').hostname);
+  } catch {
+    return false;
+  }
+}
+
 // ──────────────────────────── response guard ───────────────────────────
 
 /**

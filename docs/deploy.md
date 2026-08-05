@@ -25,12 +25,16 @@ version the project is configured with, and the build fails with
 `Found invalid Node.js Version`. If that error appears anyway, set **Project
 Settings → Node.js Version → 22.x**.
 
-## Cloudflare Workers
+## Cloudflare Workers — does not work against this registry
 
-Worth trying whenever Vercel's backend reports `challenge: true`: a Worker's
-request to the registry originates inside Cloudflare's own network instead of
-from a datacenter IP range, which is a different path rather than the same
-request with new headers.
+Tried and measured: a Worker backend gets `challenge: true` where the Vercel
+one succeeds. Cloudflare refuses subrequests from its own Workers to origins it
+fronts, so being "inside Cloudflare's network" is a disadvantage here, not an
+advantage. The app detects a `workers.dev` backend and says so.
+
+The Worker is kept because it is a working backend for any upstream that is not
+behind Cloudflare — retarget it with `REGISTRY_API_BASE`. For this registry,
+use Vercel.
 
 **From the dashboard (no repository needed).**
 
@@ -86,10 +90,9 @@ If the backend row says «Не вдалося зʼєднатися», check in t
    browser directly — it should return JSON, not a 404 page.
 3. **Cloudflare.** A `challenge: true` error means the request reached
    Cloudflare and was refused there — the backend works, the block is upstream.
-   Cloudflare filters datacenter IP ranges, and Vercel's are well known, so
-   this is the expected outcome for some names and regions. Deploy the Worker
-   instead: its requests originate inside Cloudflare's own network, which is a
-   genuinely different path rather than the same request with new headers.
+   If the backend is a Worker, that is expected: move it to Vercel. On Vercel,
+   check that the deployment is current, since the browser header profile is
+   what makes the registry answer.
 
 ## Local
 

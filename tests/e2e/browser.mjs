@@ -319,18 +319,48 @@ await page.route('**/blocked-backend.test/api/registry**', (route) =>
   })
 );
 
-await step('a blocked backend gets advice about the worker, not about deploying', async () => {
-  await setBackend('https://blocked-backend.test/api/registry');
-  await page.fill('#pib', 'Хміль Владислав Богданович');
-  await page.click('#submitBtn');
-  await page.waitForSelector('.status--error', { timeout: 12000 });
+await page.route('**/blocked.workers.dev/**', (route) =>
+  route.fulfill({
+    status: 502,
+    contentType: 'application/json',
+    body: JSON.stringify({
+      error: 'Реєстр відхилив запит (захист Cloudflare).',
+      challenge: true,
+      upstreamStatus: 403,
+      tried: [{ profile: 'browser', status: 403, challenge: true }],
+    }),
+  })
+);
 
-  const text = await page.textContent('#status');
-  if (!text.includes('Cloudflare Workers')) throw new Error(`message: ${text}`);
-  if (text.includes('розгорніть api/registry.js')) throw new Error('tells the user to deploy what already runs');
-  if (!text.includes('browser → 403')) throw new Error('the attempts made are not shown');
+await step('a blocked backend is not told to deploy what already runs', async () => {
+  try {
+    await setBackend('https://blocked-backend.test/api/registry');
+    await page.fill('#pib', 'Хміль Владислав Богданович');
+    await page.click('#submitBtn');
+    await page.waitForSelector('.status--error', { timeout: 12000 });
 
-  await setBackend('https://my-backend.test/api/registry');
+    const text = await page.textContent('#status');
+    if (text.includes('розгорніть api/registry.js')) throw new Error('tells the user to deploy what already runs');
+    if (!text.includes('browser → 403')) throw new Error('the attempts made are not shown');
+    if (!text.includes('інший майданчик')) throw new Error(`message: ${text}`);
+  } finally {
+    // Restore even on failure, or every later step inherits a dead backend.
+    await setBackend('https://my-backend.test/api/registry');
+  }
+});
+
+await step('a blocked Workers backend is told the platform is the problem', async () => {
+  try {
+    await setBackend('https://blocked.workers.dev');
+    await page.click('#submitBtn');
+    await page.waitForSelector('.status--error', { timeout: 12000 });
+
+    const text = await page.textContent('#status');
+    if (!text.includes('Cloudflare Workers')) throw new Error(`message: ${text}`);
+    if (!text.includes('Vercel')) throw new Error('no working alternative named');
+  } finally {
+    await setBackend('https://my-backend.test/api/registry');
+  }
 });
 
 await step('the shipped module upgrades an http backend address', async () => {

@@ -20,8 +20,8 @@ The interface is in Ukrainian; the codebase is in English.
 
 ```bash
 npm start    # serve at http://127.0.0.1:8099/index.html
-npm test     # 63 tests, no dependencies
-npm run test:e2e  # 18 browser scenarios (needs Playwright + `npm start`)
+npm test     # 65 tests, no dependencies
+npm run test:e2e  # 22 browser scenarios (needs Playwright + `npm start`)
 npm run icons  # regenerate PWA icons (needs Python + Pillow)
 ```
 
