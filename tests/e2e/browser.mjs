@@ -129,6 +129,29 @@ const step = async (name, fn) => {
 
 await page.goto(BASE, { waitUntil: 'networkidle' });
 
+await step('demo mode runs the whole app with no network at all', async () => {
+  // The registry refuses server traffic for hours at a time; without this
+  // there is no way to look at the app, let alone judge a new screen.
+  const offline = await browser.newContext({ ...devices['Pixel 7'], locale: 'uk-UA' });
+  const demo = await offline.newPage();
+  await demo.route('**/public-api.nazk.gov.ua/**', (route) => route.abort('failed'));
+  await demo.goto(`${BASE}?demo=1`);
+
+  await demo.waitForSelector('.doc-card', { timeout: 15000 });
+  if ((await demo.locator('.doc-card').count()) !== 3) throw new Error('the sample should hold three filings');
+
+  await demo.click('#profileBtn');
+  await demo.waitForSelector('.profile__block', { timeout: 20000 });
+  const text = await demo.textContent('#profileView');
+  if (!text.includes('OPEL VECTRA')) throw new Error('the vehicle is missing from the summary');
+  if (!text.includes('зникло')) throw new Error('the sold vehicle is not reported as gone');
+  if (!(await demo.isVisible('.is-demo, body.is-demo'))) {
+    const marked = await demo.evaluate(() => document.body.classList.contains('is-demo'));
+    if (!marked) throw new Error('nothing tells the reader this is sample data');
+  }
+  await offline.close();
+});
+
 await step('the app boots and the recovery hatch stays out of the way', async () => {
   const booted = await page.evaluate(() => window.__appBooted === true);
   if (!booted) throw new Error('the module did not signal a successful boot');

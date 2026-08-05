@@ -11,6 +11,12 @@ A separate button switches the interface into a playful "paw" skin.
 Installs on the home screen from Chrome — no APK, no sideloading.
 The interface is in Ukrainian; the codebase is in English.
 
+## Try it without a registry
+
+Open the app with `?demo=1`. Everything works offline against a bundled sample
+of three filings for one person, which is enough to see the consolidated view
+do its job. A banner marks the data as a sample throughout.
+
 ## Install on a phone
 
 1. Deploy (see [docs/deploy.md](docs/deploy.md)) — Vercel is recommended,
@@ -22,8 +28,8 @@ The interface is in Ukrainian; the codebase is in English.
 
 ```bash
 npm start    # serve at http://127.0.0.1:8099/index.html
-npm test     # 82 tests, no dependencies
-npm run test:e2e  # 27 browser scenarios (needs Playwright + `npm start`)
+npm test     # 83 tests, no dependencies
+npm run test:e2e  # 28 browser scenarios (needs Playwright + `npm start`)
 npm run icons  # regenerate PWA icons (needs Python + Pillow)
 ```
 
@@ -39,6 +45,7 @@ src/lib/pib.js              name normalisation, Google query
 src/lib/registry.js         endpoints, routing, SSRF guard
 src/lib/declaration.js      response parsing, document flattening
 src/lib/summary.js          consolidated profile across several declarations
+demo/declarations.json      sample data for ?demo=1
 api/registry.js             backend for Vercel
 workers/registry.worker.js  the same backend for Cloudflare Workers
 wrangler.toml               Workers deployment (entry point, not a static site)

@@ -170,7 +170,7 @@ export function buildProfile(documents) {
     property: collect(dated, STEP.property, propertyKey, (record) => ({
       title: text(record.objectType) || 'Обʼєкт',
       detail: joinDetails([
-        text(record.totalArea) && `${text(record.totalArea)} м²`,
+        text(record.totalArea) && `площа ${text(record.totalArea)}`,
         text(record.city, record.ua_cityType),
         text(record.owningDate) && `з ${text(record.owningDate)}`,
       ]),
@@ -256,16 +256,30 @@ export function assetChanges(profile) {
     ['Нерухомість', profile.property],
     ['Транспорт', profile.vehicles],
   ]) {
+    const earliest = Math.min(...filed);
+
     for (const item of items) {
       const firstYear = item.years[item.years.length - 1];
       const lastYear = item.years[0];
+      if (firstYear === undefined) continue;
 
-      if (lastYear !== undefined && lastYear !== latest) {
-        changes.push({ kind, title: item.title, event: 'зникло', year: lastYear, detail: item.detail });
-      }
-      // "Appeared" only counts when an earlier filing exists to have missed it.
-      if (firstYear !== undefined && firstYear !== Math.min(...filed)) {
-        changes.push({ kind, title: item.title, event: 'зʼявилося', year: firstYear, detail: item.detail });
+      const gone = lastYear !== latest;
+      const arrived = firstYear !== earliest;
+
+      // An asset declared in one year only would otherwise produce two rows
+      // saying opposite things about the same thing. Disappearance is the more
+      // useful half, so it wins and carries the span.
+      if (gone) {
+        changes.push({
+          kind,
+          title: item.title,
+          event: 'зникло',
+          year: lastYear,
+          span: arrived && firstYear !== lastYear ? `${firstYear}–${lastYear}` : String(lastYear),
+          detail: item.detail,
+        });
+      } else if (arrived) {
+        changes.push({ kind, title: item.title, event: 'зʼявилося', year: firstYear, span: String(firstYear), detail: item.detail });
       }
     }
   }

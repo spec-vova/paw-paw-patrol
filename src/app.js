@@ -137,6 +137,8 @@ const state = {
   profile: null,
   profileDocs: [],
   summaries: [],
+  demoMode: false,
+  demo: null,
 };
 
 // ──────────────────────────── storage ──────────────────────────
@@ -259,7 +261,41 @@ class ApiError extends Error {
   }
 }
 
+/**
+ * Demo mode: answers requests from a bundled sample instead of the network.
+ *
+ * The registry is behind Cloudflare and refuses server traffic for hours at a
+ * time, which leaves no way to look at the app at all. With ?demo=1 every
+ * screen is reachable offline, and the sample is three years of one person so
+ * the consolidated view has something to consolidate.
+ */
+async function demoAnswer(url) {
+  if (!state.demo) {
+    const response = await fetch('./demo/declarations.json');
+    state.demo = await response.json();
+  }
+
+  const query = new URL(url, location.href).searchParams;
+  const path = query.get('path') || new URL(url, location.href).pathname;
+
+  const single = /documents\/(?!list)([^/?]+)/.exec(path);
+  if (single) {
+    const found = state.demo.find((doc) => doc.id === decodeURIComponent(single[1]));
+    return found || { error: 1310002 };
+  }
+
+  // The sample is one person, so any name matches; an obviously different
+  // surname returns nothing, which keeps the empty state reachable too.
+  const wanted = (query.get('query') || '').toLocaleLowerCase('uk');
+  const matches =
+    !wanted || state.demo.some((doc) => JSON.stringify(doc.data.step_1.data).toLocaleLowerCase('uk').includes(wanted.split(' ')[0]));
+
+  return { total: matches ? state.demo.length : 0, items: matches ? state.demo : [] };
+}
+
 async function fetchOnce(url, timeoutMs = REQUEST_TIMEOUT_MS) {
+  if (state.demoMode) return demoAnswer(url);
+
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
 
@@ -891,7 +927,7 @@ function renderProfile(profile, foundCount) {
           profileRow(
             String(year.year),
             year.total === null ? 'не вказано' : year.total.toLocaleString('uk-UA', { maximumFractionDigits: 0 }),
-            year.withheld ? `${year.withheld} позицій приховано` : describeIncome(year.items)
+            year.withheld ? plural(year.withheld, 'позицію', 'позиції', 'позицій') + ' приховано' : describeIncome(year.items)
           )
         )
       )
@@ -904,7 +940,7 @@ function renderProfile(profile, foundCount) {
       profileBlock(
         'Що змінилося',
         changes.map((change) => {
-          const row = profileRow(change.title, String(change.year), `${change.kind} · ${change.event}`);
+          const row = profileRow(change.title, change.span || String(change.year), `${change.kind} · ${change.event}`);
           row.classList.add('profile__change');
           if (change.event === 'зникло') row.classList.add('profile__change--gone');
           return row;
@@ -937,6 +973,16 @@ function renderProfile(profile, foundCount) {
   }
 
   els.profileView.replaceChildren(...blocks);
+}
+
+/** Ukrainian plural agreement: 1 позицію, 2 позиції, 5 позицій. */
+function plural(count, one, few, many) {
+  const mod100 = count % 100;
+  const mod10 = count % 10;
+  if (mod100 >= 11 && mod100 <= 14) return `${count} ${many}`;
+  if (mod10 === 1) return `${count} ${one}`;
+  if (mod10 >= 2 && mod10 <= 4) return `${count} ${few}`;
+  return `${count} ${many}`;
 }
 
 function describeIncome(items) {
@@ -1222,9 +1268,21 @@ function init() {
   renderRecent();
   onInput();
 
+  const params = new URLSearchParams(location.search);
+
+  // ?demo=1 runs the whole app on a bundled sample, with no network at all.
+  state.demoMode = params.get('demo') === '1';
+  if (state.demoMode) {
+    document.body.classList.add('is-demo');
+    els.subtitle.textContent = 'Демонстраційний режим — приклад, не реальні дані';
+    els.pib.value = 'Тестенко Тест Тестович';
+    onInput();
+    startSearch();
+  }
+
   // Allows opening the app with a name prefilled: ?pib=Іваненко Іван
-  const fromUrl = new URLSearchParams(location.search).get('pib');
-  if (fromUrl) {
+  const fromUrl = params.get('pib');
+  if (fromUrl && !state.demoMode) {
     els.pib.value = fromUrl;
     onInput();
     startSearch();

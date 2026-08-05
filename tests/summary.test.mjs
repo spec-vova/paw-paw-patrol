@@ -71,7 +71,8 @@ test('an asset is one entry with the years it appears in, not one per filing', (
 
   assert.ok(house, 'the house is found');
   assert.deepEqual(house.years, [2023, 2022, 2021], 'three filings, one asset');
-  assert.match(house.detail, /м²/);
+  // No unit is asserted: totalArea is hectares for land and m² for buildings.
+  assert.match(house.detail, /площа/);
   assert.ok(house.rights.length > 0, 'ownership types are collected');
 });
 
@@ -107,6 +108,25 @@ test('assets that stop or start being declared surface as changes', () => {
     changes.some((change) => change.title === 'Житловий будинок'),
     false
   );
+});
+
+test('an asset seen in a single year yields one row, not two opposite ones', () => {
+  // The car exists only in 2022: "appeared" and "disappeared" are both true,
+  // and printing both about the same object tells the reader nothing.
+  const profile = buildProfile([
+    variant(2023, (data) => {
+      data.step_6.data = [];
+    }),
+    base,
+    variant(2021, (data) => {
+      data.step_6.data = [];
+    }),
+  ]);
+
+  const rows = assetChanges(profile).filter((change) => change.title === 'OPEL VECTRA');
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].event, 'зникло');
+  assert.equal(rows[0].span, '2022', 'the single year it was declared');
 });
 
 test('assets present in the earliest filing are not reported as newly appeared', () => {

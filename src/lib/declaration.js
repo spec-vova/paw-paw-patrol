@@ -261,7 +261,9 @@ export const FIELD_LABELS = {
   costDate: 'Вартість на дату набуття',
   costAssessment: 'Вартість за оцінкою',
   cost_date_assessment: 'Вартість на дату оцінки',
-  totalArea: 'Загальна площа, м²',
+  // Units differ by object type — hectares for land, m² for buildings — so
+  // the label states none rather than the wrong one.
+  totalArea: 'Загальна площа',
   ua_cityType: 'Населений пункт',
   ua_street: 'Вулиця',
   ua_houseNum: 'Будинок',
