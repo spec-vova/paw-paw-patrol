@@ -130,6 +130,46 @@ function isHostLike(candidate) {
   return host === 'localhost' || /\.[a-z]{2,}$/i.test(host) || /^\d{1,3}(\.\d{1,3}){3}$/.test(host);
 }
 
+/**
+ * Splits a multi-line backend setting into normalised addresses.
+ *
+ * More than one is allowed because the upstream block is not deterministic:
+ * the same Worker answered at one hour and was refused at another, and Vercel
+ * behaved the other way round. Keeping both configured means the app finds a
+ * live route by itself instead of the user editing settings after every mood
+ * swing of the edge network.
+ *
+ * @returns {{value: string[], warnings: string[]}}
+ */
+export function parseBackends(input, options = {}) {
+  const lines = String(input ?? '')
+    .split(/[\n,;]+/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  const value = [];
+  const warnings = [];
+  for (const line of lines) {
+    const normalized = normalizeBackendBase(line, options);
+    if (!normalized.value) continue;
+    if (normalized.warning) warnings.push(normalized.warning);
+    if (!value.includes(normalized.value)) value.push(normalized.value);
+  }
+  return { value, warnings };
+}
+
+/** Short label for a backend address, for diagnostics and error lists. */
+export function backendLabel(address) {
+  const value = String(address ?? '').trim();
+  if (!value) return 'бекенд';
+  if (value.startsWith('/')) return `цей домен (${value})`;
+  try {
+    return new URL(value).hostname;
+  } catch {
+    return value;
+  }
+}
+
 /** Document-list URL addressed to the own backend. */
 export function buildBackendSearchUrl(backendBase, pib, options = {}) {
   const { page = 1, declarationYear } = options;

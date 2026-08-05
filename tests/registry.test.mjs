@@ -7,8 +7,10 @@ import {
   buildBackendSearchUrl,
   buildDocumentUrl,
   buildSearchUrl,
+  backendLabel,
   DEFAULT_PROXY_TEMPLATE,
   isWorkersHost,
+  parseBackends,
   looksLikeChallenge,
   migrateProxyTemplate,
   normalizeBackendBase,
@@ -173,6 +175,38 @@ test('a normalized same-origin path still builds a usable request', () => {
   const resolved = resolveUpstream(new URL(url, 'https://app.test').searchParams);
   assert.equal(resolved.ok, true);
   assert.ok(resolved.url.includes('/documents/list'));
+});
+
+test('several backends can be configured at once', () => {
+  // The upstream block is not deterministic: the same Worker answered at one
+  // hour and was refused at another. Keeping two configured lets the app pick.
+  const parsed = parseBackends(
+    ['/api/registry', 'http://paw-paw-patrol-eta.vercel.app/api/registry', ' name.account.workers.dev '].join('\n')
+  );
+  assert.deepEqual(parsed.value, [
+    '/api/registry',
+    'https://paw-paw-patrol-eta.vercel.app/api/registry',
+    'https://name.account.workers.dev',
+  ]);
+  assert.equal(parsed.warnings.length, 2, 'both repairs are reported');
+});
+
+test('parseBackends drops blanks and duplicates', () => {
+  assert.deepEqual(parseBackends('').value, []);
+  assert.deepEqual(parseBackends('\n\n  \n').value, []);
+  assert.deepEqual(parseBackends('https://').value, [], 'a half-cleared line is not an address');
+  assert.deepEqual(parseBackends('/api/registry\napi/registry\n/api/registry/').value, ['/api/registry']);
+  assert.deepEqual(parseBackends('a.test/x, b.test/y; c.test/z').value, [
+    'https://a.test/x',
+    'https://b.test/y',
+    'https://c.test/z',
+  ]);
+});
+
+test('backendLabel names a route in a way a reader can act on', () => {
+  assert.equal(backendLabel('https://paw.vercel.app/api/registry'), 'paw.vercel.app');
+  assert.equal(backendLabel('/api/registry'), 'цей домен (/api/registry)');
+  assert.equal(backendLabel(''), 'бекенд');
 });
 
 test('a retired proxy template is replaced instead of failing forever', () => {

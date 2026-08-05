@@ -21,7 +21,9 @@ import {
   extractList,
   flattenDocument,
   DEFAULT_PROXY_TEMPLATE,
+  backendLabel,
   isWorkersHost,
+  parseBackends,
   looksLikeChallenge,
   migrateProxyTemplate,
   normalizeBackendBase,
@@ -307,14 +309,16 @@ function buildRoutes(kind, params) {
   const { backendBase, apiBase, proxyEnabled, proxyTemplate } = state.settings;
   const routes = [];
 
-  if (backendBase) {
+  // One route per configured backend: the upstream block comes and goes, so
+  // whichever answers today wins without the user editing settings.
+  for (const backend of parseBackends(backendBase).value) {
     routes.push({
-      id: 'backend',
-      label: 'власний бекенд',
+      id: `backend:${backend}`,
+      label: backendLabel(backend),
       url:
         kind === 'list'
-          ? buildBackendSearchUrl(backendBase, params.pib, { page: params.page })
-          : buildBackendDocumentUrl(backendBase, params.id),
+          ? buildBackendSearchUrl(backend, params.pib, { page: params.page })
+          : buildBackendDocumentUrl(backend, params.id),
     });
   }
 
@@ -514,10 +518,11 @@ function showError(error) {
         `Спроби посередника: ${(error.tried || []).map((t) => `${t.profile} → ${t.status}`).join(', ') || '—'}.`
       );
       lines.push(
-        isWorkersHost(state.settings.backendBase)
-          ? 'Посередник працює на Cloudflare Workers, а Cloudflare відхиляє запити власних воркерів до сайтів під своїм захистом. Переключіть бекенд на Vercel — звідти реєстр відповідає.'
-          : 'Спробуйте інший майданчик для посередника — інструкція в docs/deploy.md.'
+        'Блокування то зникає, то повертається, і залежить від майданчика. Додайте в налаштуваннях другу адресу бекенда з іншого хостингу — застосунок сам візьме той, що відповідає.'
       );
+      if (isWorkersHost(state.settings.backendBase)) {
+        lines.push('Зараз налаштований лише Cloudflare Workers; варто дописати ще й адресу на Vercel.');
+      }
     } else {
       lines.push(
         'Реєстр стоїть за Cloudflare, і той відхиляє запити просто з браузера — до самого API вони не доходять.',
@@ -821,15 +826,16 @@ function openSettings() {
 }
 
 function saveSettingsValues() {
-  const backend = normalizeBackendBase(els.backendBase.value, { pageProtocol: location.protocol });
-  if (backend.warning) {
-    els.backendBase.value = backend.value;
-    toast(backend.warning);
+  const backends = parseBackends(els.backendBase.value, { pageProtocol: location.protocol });
+  const backendValue = backends.value.join('\n');
+  if (backends.warnings.length) {
+    els.backendBase.value = backendValue;
+    toast(backends.warnings[0]);
   }
 
   state.settings = {
     apiBase: els.apiBase.value.trim().replace(/\/+$/, '') || DEFAULT_SETTINGS.apiBase,
-    backendBase: backend.value,
+    backendBase: backendValue,
     proxyEnabled: els.proxyEnabled.checked,
     proxyTemplate: els.proxyTemplate.value.trim() || DEFAULT_SETTINGS.proxyTemplate,
   };
@@ -939,10 +945,10 @@ for (const dialog of [els.docDialog, els.settingsDialog]) {
 
 function init() {
   state.settings = { ...DEFAULT_SETTINGS, ...readStore(STORAGE.settings, {}) };
-  // A previously saved address may still carry http:// — repair it on load.
-  state.settings.backendBase = normalizeBackendBase(state.settings.backendBase, {
+  // A previously saved address may still carry http:// or a glued-on scheme.
+  state.settings.backendBase = parseBackends(state.settings.backendBase, {
     pageProtocol: location.protocol,
-  }).value;
+  }).value.join('\n');
   // A stored proxy may point at a service that has since closed its free tier.
   state.settings.proxyTemplate = migrateProxyTemplate(state.settings.proxyTemplate);
   writeStore(STORAGE.settings, state.settings);

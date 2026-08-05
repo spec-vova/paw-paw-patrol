@@ -156,6 +156,14 @@ h2 {
   font-size: 15px;
 }
 
+.text-input--multi {
+  height: auto;
+  min-height: 84px;
+  padding: 12px 14px;
+  line-height: 1.45;
+  resize: vertical;
+}
+
 .preview {
   margin: 10px 0 0;
   padding: 9px 12px;

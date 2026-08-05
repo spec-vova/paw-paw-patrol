@@ -179,18 +179,20 @@
       </div>
       <div class="sheet__body">
         <label class="field-label" for="backendBase">Адреса власного бекенда</label>
-        <input
+        <textarea
           id="backendBase"
-          class="text-input"
-          type="text"
+          class="text-input text-input--multi"
+          rows="3"
           inputmode="url"
           spellcheck="false"
-          placeholder="/api/registry або https://проєкт.vercel.app/api/registry"
-        />
+          placeholder="/api/registry&#10;https://проєкт.vercel.app/api/registry&#10;https://імʼя.акаунт.workers.dev"
+        ></textarea>
         <p class="hint">
           Реєстр стоїть за Cloudflare і відхиляє запити з браузера. Посередник (<code>api/registry.js</code> на Vercel
           або <code>workers/registry.worker.js</code> у Cloudflare Workers) ходить до API з сервера — інструкція в
-          <code>docs/deploy.md</code>. Якщо застосунок відкрито з того самого домену, достатньо
+          <code>docs/deploy.md</code>.
+          <strong>Можна вказати кілька адрес, по одній на рядок</strong> — застосунок спробує їх по черзі й
+          запамʼятає ту, що відповіла. Якщо застосунок відкрито з того самого домену, достатньо
           <code>/api/registry</code>. Порожнє поле — запити йдуть напряму.
         </p>
 

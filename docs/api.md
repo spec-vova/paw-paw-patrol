@@ -55,14 +55,18 @@ The fix is a server-side backend that presents itself as a browser: the
 `browser` header profile (Chrome User-Agent, `Referer`, `Sec-Fetch-*`) is what
 made the registry answer. A plain self-identifying client is refused.
 
-Where the backend runs matters as much as its headers. Measured against this
-registry:
+Where the backend runs matters, but not predictably. Both platforms have been
+seen to work and to be refused at different hours with identical code, so the
+app accepts a list of backends and uses whichever answers:
 
 | Backend | Result |
 | --- | --- |
-| Vercel function | works |
-| Cloudflare Worker | `challenge: true` — Cloudflare refuses subrequests from its own Workers to origins it fronts |
-| Browser, directly | `403` — foreign `Origin` |
+| Vercel function | worked; refused on another attempt |
+| Cloudflare Worker | worked; refused on another attempt |
+| Browser, directly | `403` — foreign `Origin`, consistently |
+
+Only the browser case is deterministic. Treat a `challenge: true` from a
+backend as weather, not as a verdict on the host.
 
 ## Own backend contract
 

@@ -25,16 +25,20 @@ version the project is configured with, and the build fails with
 `Found invalid Node.js Version`. If that error appears anyway, set **Project
 Settings → Node.js Version → 22.x**.
 
-## Cloudflare Workers — does not work against this registry
+## Cloudflare Workers
 
-Tried and measured: a Worker backend gets `challenge: true` where the Vercel
-one succeeds. Cloudflare refuses subrequests from its own Workers to origins it
-fronts, so being "inside Cloudflare's network" is a disadvantage here, not an
-advantage. The app detects a `workers.dev` backend and says so.
+Both platforms have been observed working and being refused, at different
+hours, with the same code:
 
-The Worker is kept because it is a working backend for any upstream that is not
-behind Cloudflare — retarget it with `REGISTRY_API_BASE`. For this registry,
-use Vercel.
+| When | Vercel | Worker |
+| --- | --- | --- |
+| first attempt | `challenge: true` | worked — nine declarations returned |
+| later that day | worked | `challenge: true` |
+
+So the block is not a property of the platform, as an earlier version of this
+document claimed. It varies. **Configure both backends** — the app takes
+whichever answers, one address per line in settings — instead of editing
+settings whenever the edge network changes its mind.
 
 **From the dashboard (no repository needed).**
 

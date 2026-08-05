@@ -358,7 +358,7 @@ await step('a blocked backend is not told to deploy what already runs', async ()
     const text = await page.textContent('#status');
     if (text.includes('розгорніть api/registry.js')) throw new Error('tells the user to deploy what already runs');
     if (!text.includes('browser → 403')) throw new Error('the attempts made are not shown');
-    if (!text.includes('інший майданчик')) throw new Error(`message: ${text}`);
+    if (!text.includes('іншого хостингу')) throw new Error(`message: ${text}`);
   } finally {
     // Restore even on failure, or every later step inherits a dead backend.
     await setBackend('https://my-backend.test/api/registry');
@@ -390,12 +390,36 @@ await step('the shipped module upgrades an http backend address', async () => {
   if (!fixed.warning) throw new Error('the fix was silent');
 });
 
+await step('a dead backend is skipped for a live one without touching settings', async () => {
+  // Both configured at once: the first is refused upstream, the second answers.
+  await setBackend(['https://blocked-backend.test/api/registry', 'https://my-backend.test/api/registry'].join('\n'));
+  await page.fill('#pib', 'Іваненко Іван Іванович');
+  await page.click('#submitBtn');
+  await page.waitForSelector('.doc-card', { timeout: 12000 });
+
+  const cards = await page.locator('.doc-card').count();
+  if (cards !== 2) throw new Error(`cards: ${cards}`);
+});
+
+await step('diagnostics list every configured backend', async () => {
+  await page.click('#settingsBtn');
+  await page.click('#diagnoseBtn');
+  await page.waitForSelector('.diagnostics__line--ok', { timeout: 15000 });
+
+  const lines = await page.locator('.diagnostics__line').allTextContents();
+  if (!lines.some((line) => line.includes('my-backend.test'))) throw new Error(lines.join(' | '));
+  if (!lines.some((line) => line.includes('blocked-backend.test'))) throw new Error(lines.join(' | '));
+  await page.click('#settingsCloseBtn');
+  await setBackend('https://my-backend.test/api/registry');
+});
+
 await step('diagnostics report which route works', async () => {
   await page.click('#settingsBtn');
   await page.click('#diagnoseBtn');
   await page.waitForSelector('.diagnostics__line--ok', { timeout: 12000 });
   const ok = await page.textContent('.diagnostics__line--ok');
-  if (!ok.includes('бекенд')) throw new Error(`working route: ${ok}`);
+  // Routes are labelled by host now, so the reader can tell two backends apart.
+  if (!ok.includes('my-backend.test')) throw new Error(`working route: ${ok}`);
   await page.waitForSelector('.diagnostics__line--fail', { timeout: 12000 });
   const fail = await page.textContent('.diagnostics__line--fail');
   if (!fail.includes('напряму')) throw new Error(`expected the direct route to fail, got: ${fail}`);
