@@ -156,10 +156,26 @@ await step('multi-line name collapses in the preview', async () => {
   if (!preview.includes('іваненко іван іванович')) throw new Error(`preview: ${preview}`);
 });
 
-await step('the Google chip carries the word deklaratsiia', async () => {
+await step('the Google chip carries the keyword and the current year', async () => {
   const href = await page.getAttribute('#googleChip', 'href');
   const q = new URL(href).searchParams.get('q');
   if (!q.includes('декларація')) throw new Error(`query: ${q}`);
+  if (!q.includes(String(new Date().getFullYear()))) throw new Error(`no year in: ${q}`);
+});
+
+await step('a path typed into the backend field stays a path', async () => {
+  try {
+    await page.click('#settingsBtn');
+    await page.fill('#backendBase', 'api/registry');
+    await page.click('#settingsSaveBtn');
+    await page.click('#settingsBtn');
+    const shown = await page.inputValue('#backendBase');
+    if (shown !== '/api/registry') throw new Error(`field shows: ${shown}`);
+    await page.click('#settingsCloseBtn');
+  } finally {
+    // Back to empty: later steps assume no backend until they configure one.
+    await setBackend('');
+  }
 });
 
 await shot('01-plain-input.png');

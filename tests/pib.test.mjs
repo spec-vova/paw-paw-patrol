@@ -53,6 +53,16 @@ test('buildGoogleQuery appends the word "декларація" to the name', () 
   );
 });
 
+test('buildGoogleQuery can pin the query to a year', () => {
+  // Without a year Google ranks by link count, which favours an old filing.
+  assert.equal(buildGoogleQuery('Іваненко Іван', { year: 2025 }), '"Іваненко Іван" декларація 2025');
+  assert.equal(
+    buildGoogleQuery('Іваненко Іван', { year: 2025, site: 'public.nazk.gov.ua' }),
+    '"Іваненко Іван" декларація 2025 site:public.nazk.gov.ua'
+  );
+  assert.equal(buildGoogleQuery('Іваненко Іван', { year: 0 }), '"Іваненко Іван" декларація', 'no year, no noise');
+});
+
 test('buildGoogleUrl encodes the query', () => {
   const url = new URL(buildGoogleUrl('Іваненко Іван'));
   assert.equal(url.origin + url.pathname, 'https://www.google.com/search');

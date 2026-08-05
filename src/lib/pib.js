@@ -78,11 +78,17 @@ export function titleCasePib(input) {
 
 /**
  * Builds the search query: quoted full name plus the word "декларація".
+ *
  * @param {string} pib
- * @param {{site?: string}} [options] site — restrict the search to a domain
+ * @param {{site?: string, year?: number|string}} [options]
+ *   site — restrict the search to a domain;
+ *   year — pushes the most recent filing to the top, which is what a reader
+ *   almost always wants; without it Google favours whichever year has the most
+ *   links, usually an old one.
  */
 export function buildGoogleQuery(pib, options = {}) {
   const parts = [`"${normalizePib(pib)}"`, GOOGLE_KEYWORD];
+  if (options.year) parts.push(String(options.year));
   if (options.site) parts.push(`site:${options.site}`);
   return parts.join(' ');
 }

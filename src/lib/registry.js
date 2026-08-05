@@ -90,11 +90,24 @@ export function normalizeBackendBase(input, options = {}) {
   const raw = trimSlashes(input);
 
   if (!raw) return { value: '', warning: null };
+  // A scheme with nothing after it is what a half-cleared field looks like.
+  if (/^https?:?\/*$/i.test(raw)) return { value: '', warning: null };
   // A same-origin path such as /api/registry needs no scheme at all.
   if (raw.startsWith('/')) return { value: raw, warning: null };
 
-  if (/^http:\/\//i.test(raw)) {
-    if (pageProtocol === 'https:') {
+  const scheme = /^(https?):\/\/(.*)$/i.exec(raw);
+  if (scheme) {
+    const rest = scheme[2];
+    // "https:///api/registry" and "https://api/registry" are what a scheme
+    // glued onto a path looks like. Neither is a host, so keep the path.
+    if (!rest || rest.startsWith('/')) {
+      return { value: rest ? `/${rest.replace(/^\/+/, '')}` : '', warning: 'Адресу зведено до шляху на цьому ж домені.' };
+    }
+    if (!isHostLike(rest.split('/')[0])) {
+      return { value: `/${rest}`, warning: 'Адресу зведено до шляху на цьому ж домені.' };
+    }
+
+    if (scheme[1].toLowerCase() === 'http' && pageProtocol === 'https:') {
       return {
         value: raw.replace(/^http:\/\//i, 'https://'),
         warning: 'Адресу виправлено на https:// — браузер блокує http-запити зі сторінки https.',
@@ -103,9 +116,18 @@ export function normalizeBackendBase(input, options = {}) {
     return { value: raw, warning: null };
   }
 
-  if (/^https:\/\//i.test(raw)) return { value: raw, warning: null };
-
+  // No scheme: decide between a host ("project.vercel.app/api") and a bare
+  // path ("api/registry"). Only the former deserves an https:// prefix.
+  if (!isHostLike(raw.split('/')[0])) {
+    return { value: `/${raw}`, warning: 'Адресу зведено до шляху на цьому ж домені.' };
+  }
   return { value: `https://${raw}`, warning: 'До адреси бекенда додано https://.' };
+}
+
+/** A host has a dot (example.com) or is localhost, possibly with a port. */
+function isHostLike(candidate) {
+  const host = String(candidate ?? '').split(':')[0];
+  return host === 'localhost' || /\.[a-z]{2,}$/i.test(host) || /^\d{1,3}(\.\d{1,3}){3}$/.test(host);
 }
 
 /** Document-list URL addressed to the own backend. */

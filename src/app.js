@@ -33,6 +33,8 @@ import {
 } from './lib/index.js';
 
 const APP_VERSION = '1.0.0';
+// Added to the Google query so the freshest filing ranks first.
+const SEARCH_YEAR = new Date().getFullYear();
 const REQUEST_TIMEOUT_MS = 20000;
 const RECENT_LIMIT = 8;
 
@@ -207,8 +209,8 @@ function onInput() {
 
   if (normalized) {
     els.chips.hidden = false;
-    els.googleChip.href = buildGoogleUrl(normalized);
-    els.googleChipLabel.textContent = `Загуглити «${buildGoogleQuery(normalized)}»`;
+    els.googleChip.href = buildGoogleUrl(normalized, { year: SEARCH_YEAR });
+    els.googleChipLabel.textContent = `Загуглити «${buildGoogleQuery(normalized, { year: SEARCH_YEAR })}»`;
     els.registryChip.href = buildGoogleUrl(normalized, { site: REGISTRY_HOST });
   } else {
     els.chips.hidden = true;
@@ -475,8 +477,8 @@ function showEmptyResult(payload) {
   googleLink.className = 'chip';
   googleLink.target = '_blank';
   googleLink.rel = 'noopener noreferrer';
-  googleLink.href = buildGoogleUrl(state.query);
-  googleLink.textContent = `Загуглити «${buildGoogleQuery(state.query)}»`;
+  googleLink.href = buildGoogleUrl(state.query, { year: SEARCH_YEAR });
+  googleLink.textContent = `Загуглити «${buildGoogleQuery(state.query, { year: SEARCH_YEAR })}»`;
 
   const lines = [
     `У реєстрі нічого не знайдено за запитом «${state.query}».`,
@@ -583,8 +585,8 @@ function showError(error) {
     googleLink.className = 'chip';
     googleLink.target = '_blank';
     googleLink.rel = 'noopener noreferrer';
-    googleLink.href = buildGoogleUrl(state.query);
-    googleLink.textContent = `Загуглити «${buildGoogleQuery(state.query)}»`;
+    googleLink.href = buildGoogleUrl(state.query, { year: SEARCH_YEAR });
+    googleLink.textContent = `Загуглити «${buildGoogleQuery(state.query, { year: SEARCH_YEAR })}»`;
     lines.push(googleLink);
   }
 

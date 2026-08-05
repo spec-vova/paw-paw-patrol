@@ -131,6 +131,28 @@ test('normalizeBackendBase leaves http alone when the page itself is http', () =
   assert.equal(kept.warning, null);
 });
 
+test('a path is never mistaken for a hostname', () => {
+  // Typing "/api/registry" and getting "https://api/registry" back is what a
+  // phone actually produced: the scheme was glued onto a path.
+  for (const input of ['api/registry', '/api/registry', 'https://api/registry', 'https:///api/registry']) {
+    assert.equal(normalizeBackendBase(input).value, '/api/registry', `input: ${input}`);
+  }
+
+  // A real host keeps its scheme.
+  assert.equal(
+    normalizeBackendBase('paw-paw-patrol-eta.vercel.app/api/registry').value,
+    'https://paw-paw-patrol-eta.vercel.app/api/registry'
+  );
+  assert.equal(normalizeBackendBase('localhost:3000/api', { pageProtocol: 'http:' }).value, 'https://localhost:3000/api');
+  assert.equal(normalizeBackendBase('127.0.0.1:8099/api', { pageProtocol: 'http:' }).value, 'https://127.0.0.1:8099/api');
+});
+
+test('a half-cleared field becomes empty rather than nonsense', () => {
+  for (const input of ['https://', 'https:', 'http://', '  ']) {
+    assert.deepEqual(normalizeBackendBase(input), { value: '', warning: null }, `input: ${input}`);
+  }
+});
+
 test('normalizeBackendBase accepts a same-origin path and adds a missing scheme', () => {
   assert.deepEqual(normalizeBackendBase('/api/registry'), { value: '/api/registry', warning: null });
   assert.deepEqual(normalizeBackendBase('  /api/registry/  '), { value: '/api/registry', warning: null });
