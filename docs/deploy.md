@@ -94,9 +94,10 @@ If the backend row says «Не вдалося зʼєднатися», check in t
    browser directly — it should return JSON, not a 404 page.
 3. **Cloudflare.** A `challenge: true` error means the request reached
    Cloudflare and was refused there — the backend works, the block is upstream.
-   If the backend is a Worker, that is expected: move it to Vercel. On Vercel,
-   check that the deployment is current, since the browser header profile is
-   what makes the registry answer.
+   Add a second backend on another host rather than migrating: both platforms
+   have been refused and have worked at different hours. Also check that each
+   deployment is current, since the browser header profile is what makes the
+   registry answer at all.
 
 ## Local
 
