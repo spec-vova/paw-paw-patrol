@@ -1,7 +1,14 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { buildGoogleQuery, buildGoogleUrl, normalizePib, titleCasePib, validatePib } from '../src/lib/pib.js';
+import {
+  buildGoogleQuery,
+  buildGoogleUrl,
+  latestReportingYear,
+  normalizePib,
+  titleCasePib,
+  validatePib,
+} from '../src/lib/pib.js';
 
 test('normalizePib collapses multi-line input into one line', () => {
   assert.equal(normalizePib('Іваненко\nІван\nІванович'), 'Іваненко Іван Іванович');
@@ -61,6 +68,14 @@ test('buildGoogleQuery can pin the query to a year', () => {
     '"Іваненко Іван" декларація 2025 site:public.nazk.gov.ua'
   );
   assert.equal(buildGoogleQuery('Іваненко Іван', { year: 0 }), '"Іваненко Іван" декларація', 'no year, no noise');
+});
+
+test('the search year is the last one that can already have a filing', () => {
+  // A declaration for 2026 is filed in 2027, so in 2026 the answer is 2025 —
+  // searching for the calendar year finds a year nobody has declared for.
+  assert.equal(latestReportingYear(new Date('2026-08-05T00:00:00Z')), 2025);
+  assert.equal(latestReportingYear(new Date('2026-01-02T00:00:00Z')), 2025);
+  assert.equal(latestReportingYear(new Date('2027-03-01T00:00:00Z')), 2026);
 });
 
 test('buildGoogleUrl encodes the query', () => {

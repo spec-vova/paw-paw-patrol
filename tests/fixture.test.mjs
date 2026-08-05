@@ -41,7 +41,7 @@ test('only sections with content survive, in form order', () => {
 
 test('every section is split into records a person can scan', () => {
   assert.equal(section('step_2').entries.length, 4, 'four family members');
-  assert.equal(section('step_2').entries[0].title, 'Тестенко Тест Тестович — батько');
+  assert.equal(section('step_2').entries[0].title, 'Тестенко Богдан Ростиславович — батько');
 
   assert.equal(section('step_3').entries.length, 7, 'seven properties');
   assert.deepEqual(

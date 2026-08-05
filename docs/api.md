@@ -6,8 +6,28 @@ Base URL `https://public-api.nazk.gov.ua/v2` (configurable in app settings).
 
 | Endpoint | Purpose |
 | --- | --- |
-| `GET /documents/list?query=<full name>` | search declarations; also accepts `page`, `declaration_year`, `user_declarant_id` |
+| `GET /documents/list?query=<full name>` | search declarations |
 | `GET /documents/{id}` | one declaration in full |
+| `GET /countries/list` | reference list of countries |
+
+Documented query parameters, all optional: `query` (3–255 characters, and its
+presence switches sorting from filing date to relevance), `full_search=1`
+(full text rather than name only), `user_declarant_id`, `document_type` (1–3),
+`declaration_type` (1–4), `declaration_year` (2015…current), `start_date` and
+`end_date` (UNIX seconds), `page` (1–100), `workPlace`, `workPlaceEdrpou`, and
+the KATOTTG path filters `regionPath`, `districtPath`, `communityPath`,
+`cityPath` plus their `actual_` counterparts. The backend forwards exactly
+this set.
+
+**Failures arrive as HTTP 200 with a body of `{"error": <code>}`** — 1310002
+for an unknown document, 404 for an unknown page, 1310101 for a query outside
+the length limit, and a documented code per rejected parameter. Without
+recognising them, such a response renders as a document whose only field is
+called `error`; `registryError()` turns each into a sentence.
+
+`user_declarant_id` is the registry's own identity for a person. The
+consolidated profile groups by it rather than by name, so namesakes stay apart
+and a change of surname still resolves to the same subject.
 
 ### Parsing is deliberately defensive
 

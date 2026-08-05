@@ -4,6 +4,8 @@ A phone-sized PWA that looks up Ukrainian public-official declarations by full
 name. Type the name on one line or across three, tap the button, and the app
 searches the [Unified State Register of Declarations](https://public.nazk.gov.ua)
 and shows the whole document — raw JSON plus every field grouped by section.
+One tap more consolidates every declaration of that person into a single view:
+income per year, what appeared and disappeared, positions, property, family.
 A separate button switches the interface into a playful "paw" skin.
 
 Installs on the home screen from Chrome — no APK, no sideloading.
@@ -20,8 +22,8 @@ The interface is in Ukrainian; the codebase is in English.
 
 ```bash
 npm start    # serve at http://127.0.0.1:8099/index.html
-npm test     # 71 tests, no dependencies
-npm run test:e2e  # 25 browser scenarios (needs Playwright + `npm start`)
+npm test     # 82 tests, no dependencies
+npm run test:e2e  # 27 browser scenarios (needs Playwright + `npm start`)
 npm run icons  # regenerate PWA icons (needs Python + Pillow)
 ```
 
@@ -36,6 +38,7 @@ src/styles.css              default theme and the paw skin
 src/lib/pib.js              name normalisation, Google query
 src/lib/registry.js         endpoints, routing, SSRF guard
 src/lib/declaration.js      response parsing, document flattening
+src/lib/summary.js          consolidated profile across several declarations
 api/registry.js             backend for Vercel
 workers/registry.worker.js  the same backend for Cloudflare Workers
 wrangler.toml               Workers deployment (entry point, not a static site)

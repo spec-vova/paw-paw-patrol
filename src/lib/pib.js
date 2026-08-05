@@ -93,6 +93,19 @@ export function buildGoogleQuery(pib, options = {}) {
   return parts.join(' ');
 }
 
+/**
+ * The most recent reporting year that can already have a filing.
+ *
+ * A declaration for year N is filed during N+1, so in 2026 the freshest
+ * document on record covers 2025. Searching for the calendar year returns
+ * nothing useful — it is a year nobody has declared for yet.
+ *
+ * @param {Date} [now] injected in tests; never read implicitly
+ */
+export function latestReportingYear(now = new Date()) {
+  return now.getFullYear() - 1;
+}
+
 /** Full Google search URL for the given name. */
 export function buildGoogleUrl(pib, options = {}) {
   return `https://www.google.com/search?q=${encodeURIComponent(buildGoogleQuery(pib, options))}`;

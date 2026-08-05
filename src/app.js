@@ -20,10 +20,16 @@ import {
   countFields,
   extractList,
   flattenDocument,
+  latestReportingYear,
   DEFAULT_PROXY_TEMPLATE,
+  assetChanges,
   backendLabel,
+  buildBackendDeclarantUrl,
+  buildDeclarantSearchUrl,
+  buildProfile,
   isWorkersHost,
   parseBackends,
+  registryError,
   looksLikeChallenge,
   migrateProxyTemplate,
   normalizeBackendBase,
@@ -35,8 +41,9 @@ import {
 } from './lib/index.js';
 
 const APP_VERSION = '1.0.0';
-// Added to the Google query so the freshest filing ranks first.
-const SEARCH_YEAR = new Date().getFullYear();
+// Added to the Google query so the freshest filing ranks first. Not the
+// calendar year: a declaration for 2026 will only be filed in 2027.
+const SEARCH_YEAR = latestReportingYear();
 const REQUEST_TIMEOUT_MS = 20000;
 const RECENT_LIMIT = 8;
 
@@ -70,6 +77,14 @@ const els = {
   resultsList: $('resultsList'),
   resultsCount: $('resultsCount'),
   moreBtn: $('moreBtn'),
+  profileBtn: $('profileBtn'),
+  profileDialog: $('profileDialog'),
+  profileTitle: $('profileTitle'),
+  profileSubtitle: $('profileSubtitle'),
+  profileView: $('profileView'),
+  profileCloseBtn: $('profileCloseBtn'),
+  profileCopyBtn: $('profileCopyBtn'),
+  profileDownloadBtn: $('profileDownloadBtn'),
   docDialog: $('docDialog'),
   docTitle: $('docTitle'),
   docSubtitle: $('docSubtitle'),
@@ -119,6 +134,9 @@ const state = {
   currentDoc: null,
   currentSummary: null,
   lastRoute: null,
+  profile: null,
+  profileDocs: [],
+  summaries: [],
 };
 
 // ──────────────────────────── storage ──────────────────────────
@@ -289,6 +307,13 @@ async function fetchOnce(url, timeoutMs = REQUEST_TIMEOUT_MS) {
   if (parsed === undefined) {
     throw new ApiError('Відповідь не є коректним JSON.', { kind: 'parse', url, body: text.slice(0, 300) });
   }
+
+  // The registry answers with HTTP 200 and {"error": <code>}; without this it
+  // would render as a document whose only field is called "error".
+  const failure = registryError(parsed);
+  if (failure) {
+    throw new ApiError(failure.message, { kind: 'registry', url, status: failure.code });
+  }
   return parsed;
 }
 
@@ -370,6 +395,7 @@ function startSearch() {
   state.page = 1;
   state.exhausted = false;
   els.resultsList.replaceChildren();
+  state.summaries = [];
   els.results.hidden = true;
   pushRecent(titleCasePib(check.value));
   loadPage();
@@ -393,6 +419,7 @@ async function loadPage() {
 
     hideStatus();
     els.results.hidden = false;
+    state.summaries = append ? [...state.summaries, ...summaries] : summaries;
     els.resultsList.append(...summaries.map(renderCard));
     els.resultsCount.textContent = total !== null ? `${total} всього` : `${els.resultsList.childElementCount} показано`;
 
@@ -520,8 +547,11 @@ function showError(error) {
       lines.push(
         'Блокування то зникає, то повертається, і залежить від майданчика. Додайте в налаштуваннях другу адресу бекенда з іншого хостингу — застосунок сам візьме той, що відповідає.'
       );
-      if (isWorkersHost(state.settings.backendBase)) {
-        lines.push('Зараз налаштований лише Cloudflare Workers; варто дописати ще й адресу на Vercel.');
+      // Only when every configured backend is on the same platform — with two
+      // of them the hint would be plainly wrong, as the settings screen shows.
+      const backends = parseBackends(state.settings.backendBase).value;
+      if (backends.length && backends.every(isWorkersHost)) {
+        lines.push('Усі налаштовані бекенди — на Cloudflare Workers; варто дописати ще й адресу на іншому хостингу.');
       }
     } else {
       lines.push(
@@ -773,6 +803,220 @@ function suggestedFileName() {
   return `${base}${year}.json`;
 }
 
+// ────────────────────── consolidated profile ───────────────────
+
+const PROFILE_DOC_LIMIT = 12;
+
+/** Routes for "every declaration of this declarant", by registry id. */
+function declarantRoutes(declarantId) {
+  const { backendBase, apiBase, proxyEnabled, proxyTemplate } = state.settings;
+  const routes = parseBackends(backendBase).value.map((backend) => ({
+    id: `backend:${backend}`,
+    label: backendLabel(backend),
+    url: buildBackendDeclarantUrl(backend, declarantId),
+  }));
+
+  const direct = buildDeclarantSearchUrl(declarantId, { base: apiBase });
+  routes.push({ id: 'direct', label: 'напряму до реєстру', url: direct });
+  if (proxyEnabled) routes.push({ id: 'proxy', label: 'через проксі', url: applyProxy(direct, proxyTemplate) });
+  return routes;
+}
+
+/**
+ * Collects every declaration of the person and shows what changed between them.
+ * Grouping is by user_declarant_id when the registry supplies it, so namesakes
+ * are not merged; otherwise it falls back to the documents already listed.
+ */
+async function openProfile() {
+  const listed = [...els.resultsList.children].length;
+  if (!listed) return;
+
+  state.profile = null;
+  state.profileDocs = [];
+  els.profileTitle.textContent = titleCasePib(state.query);
+  els.profileSubtitle.textContent = 'Збираю декларації…';
+  els.profileView.replaceChildren();
+  if (!els.profileDialog.open) els.profileDialog.showModal();
+
+  try {
+    const declarantId = state.summaries.find((summary) => summary.declarantId)?.declarantId ?? null;
+    let summaries = state.summaries;
+
+    if (declarantId) {
+      const payload = await fetchViaRoutes(declarantRoutes(declarantId));
+      const byDeclarant = extractList(payload).items.map(summarizeDocument);
+      if (byDeclarant.length) summaries = byDeclarant;
+    }
+
+    const wanted = summaries.filter((summary) => summary.id).slice(0, PROFILE_DOC_LIMIT);
+    const documents = [];
+    for (const [index, summary] of wanted.entries()) {
+      els.profileSubtitle.textContent = `Завантажую документ ${index + 1} з ${wanted.length}…`;
+      try {
+        documents.push(await fetchViaRoutes(buildRoutes('document', { id: summary.id })));
+      } catch {
+        // One unreadable document must not sink the whole summary.
+      }
+    }
+
+    if (!documents.length) {
+      els.profileSubtitle.textContent = 'Не вдалося завантажити жодного документа.';
+      return;
+    }
+
+    state.profileDocs = documents;
+    state.profile = buildProfile(documents);
+    renderProfile(state.profile, summaries.length);
+  } catch (error) {
+    els.profileSubtitle.textContent = error.message;
+  }
+}
+
+function renderProfile(profile, foundCount) {
+  els.profileTitle.textContent = profile.pib || titleCasePib(state.query);
+
+  const parts = [`${profile.documents} з ${foundCount} декларацій`];
+  if (profile.years.length) parts.push(`${profile.years[profile.years.length - 1]}–${profile.years[0]}`);
+  if (profile.missingYears.length) parts.push(`без декларації: ${profile.missingYears.join(', ')}`);
+  els.profileSubtitle.textContent = parts.join(' · ');
+
+  const blocks = [];
+
+  const income = profile.income.filter((year) => year.year);
+  if (income.length) {
+    blocks.push(
+      profileBlock(
+        'Доходи за роками',
+        income.map((year) =>
+          profileRow(
+            String(year.year),
+            year.total === null ? 'не вказано' : year.total.toLocaleString('uk-UA', { maximumFractionDigits: 0 }),
+            year.withheld ? `${year.withheld} позицій приховано` : describeIncome(year.items)
+          )
+        )
+      )
+    );
+  }
+
+  const changes = assetChanges(profile);
+  if (changes.length) {
+    blocks.push(
+      profileBlock(
+        'Що змінилося',
+        changes.map((change) => {
+          const row = profileRow(change.title, String(change.year), `${change.kind} · ${change.event}`);
+          row.classList.add('profile__change');
+          if (change.event === 'зникло') row.classList.add('profile__change--gone');
+          return row;
+        })
+      )
+    );
+  }
+
+  for (const [title, items] of [
+    ['Посади', null],
+    ['Нерухомість', profile.property],
+    ['Транспорт', profile.vehicles],
+    ['Банки та фінансові установи', profile.banks],
+    ['Родина', profile.family],
+  ]) {
+    if (title === 'Посади') {
+      const rows = profile.positions.map((entry) =>
+        profileRow(entry.post || '—', String(entry.year ?? ''), entry.place)
+      );
+      if (rows.length) blocks.push(profileBlock(title, rows));
+      continue;
+    }
+    if (!items?.length) continue;
+    blocks.push(
+      profileBlock(
+        title,
+        items.map((item) => profileRow(item.title, formatYears(item.years), detailOf(item)))
+      )
+    );
+  }
+
+  els.profileView.replaceChildren(...blocks);
+}
+
+function describeIncome(items) {
+  const named = items.map((item) => item.type).filter(Boolean);
+  return named.length ? [...new Set(named)].join(', ') : null;
+}
+
+function detailOf(item) {
+  return [item.detail, item.rights?.length ? item.rights.join(', ') : null].filter(Boolean).join(' · ') || null;
+}
+
+function formatYears(years) {
+  if (!years.length) return '';
+  if (years.length === 1) return String(years[0]);
+  const consecutive = years[0] - years[years.length - 1] === years.length - 1;
+  return consecutive ? `${years[years.length - 1]}–${years[0]}` : years.join(', ');
+}
+
+function profileBlock(title, rows) {
+  const block = document.createElement('section');
+  block.className = 'profile__block';
+  const heading = document.createElement('h3');
+  heading.textContent = title;
+  block.append(heading, ...rows);
+  return block;
+}
+
+function profileRow(title, years, meta) {
+  const row = document.createElement('div');
+  row.className = 'profile__row';
+
+  const left = document.createElement('div');
+  const strong = document.createElement('b');
+  strong.textContent = title;
+  left.append(strong);
+  if (meta) {
+    const note = document.createElement('span');
+    note.className = 'profile__meta';
+    note.textContent = meta;
+    left.append(note);
+  }
+
+  const right = document.createElement('span');
+  right.className = 'profile__years';
+  right.textContent = years;
+
+  row.append(left, right);
+  return row;
+}
+
+/** Plain-text rendering, so the summary can leave the app in a message. */
+function profileAsText(profile) {
+  const lines = [profile.pib || state.query, ''];
+  if (profile.years.length) lines.push(`Декларації: ${profile.years.join(', ')}`);
+  if (profile.missingYears.length) lines.push(`Немає за: ${profile.missingYears.join(', ')}`);
+
+  const section = (title, rows) => {
+    if (!rows.length) return;
+    lines.push('', title);
+    for (const row of rows) lines.push(`  ${row}`);
+  };
+
+  section(
+    'Доходи',
+    profile.income
+      .filter((year) => year.year)
+      .map((year) => `${year.year}: ${year.total === null ? 'не вказано' : year.total}`)
+  );
+  section(
+    'Що змінилося',
+    assetChanges(profile).map((change) => `${change.year} ${change.event}: ${change.title} (${change.kind})`)
+  );
+  section('Посади', profile.positions.map((entry) => `${entry.year ?? '—'}: ${entry.post || '—'} — ${entry.place || '—'}`));
+  section('Нерухомість', profile.property.map((item) => `${formatYears(item.years)} ${item.title} ${item.detail || ''}`));
+  section('Транспорт', profile.vehicles.map((item) => `${formatYears(item.years)} ${item.title}`));
+  section('Родина', profile.family.map((item) => `${item.title} — ${item.detail || ''}`));
+
+  return lines.join('\n');
+}
+
 // ─────────────────────────── settings ──────────────────────────
 
 function syncSettingsForm() {
@@ -866,6 +1110,28 @@ els.clearBtn.addEventListener('click', () => {
   els.pib.focus();
 });
 
+els.profileBtn.addEventListener('click', openProfile);
+els.profileCloseBtn.addEventListener('click', () => els.profileDialog.close());
+els.profileCopyBtn.addEventListener('click', async () => {
+  if (!state.profile) return;
+  try {
+    await navigator.clipboard.writeText(profileAsText(state.profile));
+    toast('Зведення скопійовано');
+  } catch {
+    toast('Браузер не дозволив копіювання');
+  }
+});
+els.profileDownloadBtn.addEventListener('click', () => {
+  if (!state.profile) return;
+  const blob = new Blob([JSON.stringify(state.profile, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `${(state.profile.pib || 'profile').replace(/[^\p{L}\d]+/gu, '-').toLowerCase()}-зведення.json`;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+});
+
 els.moreBtn.addEventListener('click', () => {
   state.page += 1;
   loadPage();
@@ -935,7 +1201,7 @@ els.downloadBtn.addEventListener('click', () => {
 });
 
 // Clicking the backdrop closes the sheet.
-for (const dialog of [els.docDialog, els.settingsDialog]) {
+for (const dialog of [els.docDialog, els.settingsDialog, els.profileDialog]) {
   dialog.addEventListener('click', (event) => {
     if (event.target === dialog) dialog.close();
   });

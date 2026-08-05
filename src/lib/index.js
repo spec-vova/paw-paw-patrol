@@ -9,3 +9,4 @@
 export * from './pib.js';
 export * from './registry.js';
 export * from './declaration.js';
+export * from './summary.js';

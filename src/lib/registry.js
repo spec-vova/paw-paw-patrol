@@ -12,8 +12,73 @@ import { normalizePib } from './pib.js';
 
 export const API_BASE = 'https://public-api.nazk.gov.ua/v2';
 
-/** Query parameters the backend agrees to forward upstream. */
-export const FORWARDED_PARAMS = ['query', 'page', 'declaration_year', 'user_declarant_id'];
+/**
+ * Query parameters the backend forwards upstream.
+ * Exactly the documented set — see the "Відкритий API" page of the registry.
+ */
+export const FORWARDED_PARAMS = [
+  'query',
+  'full_search',
+  'user_declarant_id',
+  'document_type',
+  'declaration_type',
+  'declaration_year',
+  'start_date',
+  'end_date',
+  'page',
+  'workPlace',
+  'workPlaceEdrpou',
+  'regionPath',
+  'districtPath',
+  'communityPath',
+  'cityPath',
+  'actual_regionPath',
+  'actual_districtPath',
+  'actual_communityPath',
+  'actual_cityPath',
+];
+
+/** Search query length the registry accepts; outside it, error 1310101. */
+export const QUERY_MIN = 3;
+export const QUERY_MAX = 255;
+
+/**
+ * The registry reports failures as a JSON body with a numeric code and an
+ * HTTP 200, so an unrecognised one would otherwise render as a document with
+ * a single field called "error".
+ */
+export const REGISTRY_ERRORS = {
+  404: 'Такої сторінки у реєстрі немає.',
+  1310002: 'Документа з таким ідентифікатором немає.',
+  1310101: `Пошуковий запит має містити від ${QUERY_MIN} до ${QUERY_MAX} символів.`,
+  1310111: 'Некоректний ID субʼєкта декларування.',
+  1310112: 'Некоректний ID субʼєкта декларування.',
+  1310121: 'Некоректний тип документа.',
+  1310122: 'Некоректний тип документа.',
+  1310131: 'Некоректний тип декларації.',
+  1310132: 'Некоректний тип декларації.',
+  1310141: 'Некоректний рік декларації.',
+  1310142: 'Некоректний рік декларації.',
+  1310151: 'Некоректна початкова дата подання.',
+  1310152: 'Некоректна початкова дата подання.',
+  1310161: 'Некоректна кінцева дата подання.',
+  1310162: 'Некоректна кінцева дата подання.',
+  1310171: 'Некоректний номер сторінки.',
+  1310172: 'Некоректний номер сторінки.',
+};
+
+/**
+ * Recognises a registry error payload.
+ * @returns {{code: number, message: string}|null}
+ */
+export function registryError(payload) {
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return null;
+
+  const code = Number(payload.error);
+  if (!Number.isFinite(code) || code === 0) return null;
+
+  return { code, message: REGISTRY_ERRORS[code] || `Реєстр повернув помилку ${code}.` };
+}
 
 const SAFE_PATH = /^documents\/(list|[A-Za-z0-9-]{1,64})$/;
 
@@ -30,6 +95,28 @@ export function buildSearchUrl(pib, options = {}) {
   if (page && page > 1) params.set('page', String(page));
   if (declarationYear) params.set('declaration_year', String(declarationYear));
   return `${base}/documents/list?${params.toString()}`;
+}
+
+/**
+ * All declarations of one declarant.
+ *
+ * user_declarant_id is the registry's own identity for a person, so this is
+ * exact where a name search is not: namesakes stay apart, and a change of
+ * surname still resolves to the same subject.
+ */
+export function buildDeclarantSearchUrl(declarantId, options = {}) {
+  const { page = 1, base = API_BASE } = options;
+  const params = new URLSearchParams({ user_declarant_id: String(declarantId) });
+  if (page && page > 1) params.set('page', String(page));
+  return `${base}/documents/list?${params.toString()}`;
+}
+
+/** The same, addressed to the own backend. */
+export function buildBackendDeclarantUrl(backendBase, declarantId, options = {}) {
+  const { page = 1 } = options;
+  const params = new URLSearchParams({ path: 'documents/list', user_declarant_id: String(declarantId) });
+  if (page && page > 1) params.set('page', String(page));
+  return `${trimSlashes(backendBase)}?${params.toString()}`;
 }
 
 /** Registry URL of a single document. */

@@ -39,6 +39,7 @@ const LIST = {
       placeOfWork: 'Міністерство юстиції України',
       declaration_year: 2023,
       declaration_type_name: 'Щорічна',
+      user_declarant_id: 2025823,
       date: '2024-03-28',
     },
     {
@@ -47,6 +48,7 @@ const LIST = {
       firstname: 'Іван',
       middlename: 'Петрович',
       position: 'Суддя',
+      user_declarant_id: 2025823,
       declaration_year: 2022,
       declaration_type_name: 'Перед звільненням',
     },
@@ -55,6 +57,8 @@ const LIST = {
 
 const DOC = {
   id: '82e5aea2-2935-4902-bf2b-765e7c9db079',
+  user_declarant_id: 2025823,
+  declaration_year: 2023,
   data: {
     step_1: {
       lastname: 'Іваненко',
@@ -160,7 +164,8 @@ await step('the Google chip carries the keyword and the current year', async () 
   const href = await page.getAttribute('#googleChip', 'href');
   const q = new URL(href).searchParams.get('q');
   if (!q.includes('декларація')) throw new Error(`query: ${q}`);
-  if (!q.includes(String(new Date().getFullYear()))) throw new Error(`no year in: ${q}`);
+  // The last year that can already have a filing, not the calendar year.
+  if (!q.includes(String(new Date().getFullYear() - 1))) throw new Error(`no reporting year in: ${q}`);
 });
 
 await step('a path typed into the backend field stays a path', async () => {
@@ -219,6 +224,43 @@ await step('empty fields stay hidden until the switch is on', async () => {
 await page.locator('.section').first().click();
 await shot('04-fields.png');
 await page.click('#docCloseBtn');
+
+await step('the consolidated profile is built from every declaration', async () => {
+  await page.click('#profileBtn');
+  await page.waitForSelector('#profileDialog[open]');
+  await page.waitForSelector('.profile__block', { timeout: 15000 });
+
+  const text = await page.textContent('#profileView');
+  if (!text.includes('Нерухомість')) throw new Error(`no property section: ${text.slice(0, 200)}`);
+  if (!text.includes('Квартира')) throw new Error('the flat from the document is missing');
+
+  const subtitle = await page.textContent('#profileSubtitle');
+  if (!/деклараці/.test(subtitle)) throw new Error(`subtitle: ${subtitle}`);
+  await page.click('#profileCloseBtn');
+});
+
+await step('a registry error code is shown as a sentence, not as a document', async () => {
+  await page.unroute('**/public-api.nazk.gov.ua/**');
+  await page.route('**/public-api.nazk.gov.ua/**', (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ error: 1310101 }) })
+  );
+
+  await page.fill('#pib', 'Іваненко Іван Іванович');
+  await page.click('#submitBtn');
+  await page.waitForSelector('.status--error', { timeout: 8000 });
+
+  const text = await page.textContent('#status');
+  if (!text.includes('від 3 до 255')) throw new Error(`message: ${text}`);
+
+  await page.unroute('**/public-api.nazk.gov.ua/**');
+  await page.route('**/public-api.nazk.gov.ua/**', async (route) => {
+    const url = route.request().url();
+    const body = url.includes('/documents/list') ? LIST : DOC;
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
+  });
+  await page.click('#submitBtn');
+  await page.waitForSelector('.doc-card', { timeout: 8000 });
+});
 
 await step('the button switches the UI into paw mode', async () => {
   await page.click('#pawBtn');
@@ -373,7 +415,8 @@ await step('a blocked Workers backend is told the platform is the problem', asyn
 
     const text = await page.textContent('#status');
     if (!text.includes('Cloudflare Workers')) throw new Error(`message: ${text}`);
-    if (!text.includes('Vercel')) throw new Error('no working alternative named');
+    // Deliberately not naming a platform as the cure: both have been refused.
+    if (!text.includes('іншому хостингу')) throw new Error(`no alternative suggested: ${text}`);
   } finally {
     await setBackend('https://my-backend.test/api/registry');
   }

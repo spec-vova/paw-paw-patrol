@@ -988,6 +988,60 @@ body[data-theme='paw'] {
   margin-top: 22px;
 }
 
+/* ──────────────────────── consolidated profile ──────────────── */
+
+.profile__block {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--bg-elevated);
+  padding: 13px 14px;
+  margin-bottom: 10px;
+}
+
+.profile__block h3 {
+  margin: 0 0 10px;
+  font-size: 14.5px;
+}
+
+.profile__row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 7px 0;
+  border-bottom: 1px dashed var(--line);
+  font-size: 14.5px;
+}
+
+.profile__row:last-child {
+  border-bottom: 0;
+}
+
+.profile__row b {
+  font-weight: 650;
+  white-space: nowrap;
+}
+
+.profile__meta {
+  display: block;
+  font-size: 12.5px;
+  color: var(--text-muted);
+}
+
+.profile__years {
+  font-size: 12px;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.profile__change {
+  border-left: 3px solid var(--warn);
+  padding-left: 10px;
+}
+
+.profile__change--gone {
+  border-left-color: var(--danger);
+}
+
 /* ────────────────────────── recovery hatch ──────────────────── */
 
 .recovery {

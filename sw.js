@@ -20,6 +20,7 @@ const SHELL = [
   './src/lib/pib.js',
   './src/lib/registry.js',
   './src/lib/declaration.js',
+  './src/lib/summary.js',
   './manifest.webmanifest',
   './icons/icon-192.png',
   './icons/icon-512.png',

@@ -109,6 +109,9 @@ export function summarizeDocument(item) {
 
   return {
     id: firstString(src.id, src.doc_uuid, src.document_id, src.uuid, src.declaration_id, at('id', 'doc_uuid')),
+    // The registry's own identity for the person, documented as
+    // user_declarant_id: exact where a name search is not.
+    declarantId: firstNumber(src.user_declarant_id, deep.get('user_declarant_id')),
     pib,
     position: firstString(
       src.position,
